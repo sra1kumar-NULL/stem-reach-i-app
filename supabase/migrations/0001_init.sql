@@ -1,4 +1,5 @@
-# Schema for the Daily Revision App (v0.1 — matches docs/04-LLD.md §1)
+-- Schema for the Daily Revision App (v0.1 — matches docs/04-LLD.md §1)
+-- Run this whole file once in the Supabase SQL Editor.
 
 create table profiles (
   id            uuid primary key references auth.users(id) on delete cascade,
