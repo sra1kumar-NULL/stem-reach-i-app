@@ -1,0 +1,20 @@
+{
+  "name": "daily-revision-app",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Daily Revision App — STEMRI / MES School Lakkere. See docs/.",
+  "workspaces": [
+    "shared",
+    "api",
+    "scripts"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "seed": "npm run seed -w scripts",
+    "verify": "npm run verify -w scripts",
+    "dev:api": "npm run dev -w api"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
