@@ -1,0 +1,574 @@
+{
+  "chapter": {
+    "ncert_no": 12,
+    "name": "Magnetic Effects of Electric Current",
+    "subject": "physics"
+  },
+  "sections": [
+    {
+      "section_no": "12.1",
+      "name": "Magnetic Field and Field Lines",
+      "questions": [
+        {
+          "type": "mcq",
+          "difficulty": "easy",
+          "text": "The region around a magnet in which its magnetic force can be felt is called its:",
+          "options": [
+            "Electric field",
+            "Magnetic field",
+            "Gravitational field",
+            "Electrostatic field"
+          ],
+          "correct": 1,
+          "explanation": "The space around a magnet where its influence can be detected is its magnetic field."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "easy",
+          "text": "Outside a bar magnet, magnetic field lines run from the:",
+          "options": [
+            "North pole to the South pole",
+            "South pole to the North pole",
+            "Centre to both poles",
+            "Either pole to the other, depending on the material"
+          ],
+          "correct": 0,
+          "explanation": "By convention, field lines emerge from the north pole and enter the south pole outside the magnet."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "easy",
+          "text": "Inside a bar magnet, the direction of magnetic field lines is:",
+          "options": [
+            "North pole to South pole",
+            "South pole to North pole",
+            "Always towards the centre",
+            "Random"
+          ],
+          "correct": 1,
+          "explanation": "Field lines are continuous closed loops: outside they go N to S, inside they go S to N."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "easy",
+          "text": "Two magnetic field lines can never:",
+          "options": [
+            "Be curved",
+            "Be parallel",
+            "Intersect each other",
+            "Point in the same direction"
+          ],
+          "correct": 2,
+          "explanation": "If two lines crossed, the compass needle would have to point in two directions at once, which is impossible."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "easy",
+          "text": "Where is the magnetic field strength of a bar magnet the strongest?",
+          "options": [
+            "At the centre",
+            "Near the poles",
+            "Far away from the magnet",
+            "At the edges of the magnet"
+          ],
+          "correct": 1,
+          "explanation": "Field lines are most crowded near the poles, and crowding of lines means a stronger field."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "easy",
+          "text": "A compass needle near a magnet aligns itself:",
+          "options": [
+            "Perpendicular to the field lines",
+            "Tangentially to the field line at that point",
+            "Towards the centre of the magnet",
+            "Randomly, independent of the field"
+          ],
+          "correct": 1,
+          "explanation": "The north pole of the needle points along the direction of the field line, i.e. tangent to it."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "medium",
+          "text": "If a bar magnet is cut into two halves, each half:",
+          "options": [
+            "Loses its magnetism",
+            "Becomes a single pole magnet",
+            "Becomes a new magnet with both north and south poles",
+            "Becomes an electromagnet"
+          ],
+          "correct": 2,
+          "explanation": "Isolated magnetic poles do not exist; each half becomes a complete magnet with its own N and S poles."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "medium",
+          "text": "A uniform magnetic field is represented by field lines that are:",
+          "options": [
+            "Parallel and equally spaced",
+            "Converging at a point",
+            "Diverging from a point",
+            "Circular"
+          ],
+          "correct": 0,
+          "explanation": "Parallel, equally spaced lines indicate a field that is constant in direction and strength everywhere."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "medium",
+          "text": "The magnetic field strength at a point is indicated by:",
+          "options": [
+            "The length of the field line",
+            "How close the field lines are to each other",
+            "The colour of the field line",
+            "The number of magnets used"
+          ],
+          "correct": 1,
+          "explanation": "Closer (crowded) field lines mean a stronger magnetic field at that region."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "medium",
+          "text": "Earth behaves like a giant magnet. Its magnetic south pole is near the:",
+          "options": [
+            "Geographic south pole",
+            "Geographic north pole",
+            "Equator",
+            "Centre of the earth"
+          ],
+          "correct": 1,
+          "explanation": "A magnet's north pole points towards Earth's geographic north, which is its magnetic south pole."
+        },
+        {
+          "type": "flashcard",
+          "difficulty": "easy",
+          "text": "Define magnetic field.",
+          "answer": "The region around a magnet (or a current-carrying conductor) within which its magnetic force can be experienced is called the magnetic field.",
+          "explanation": "It is detected using a magnetic compass — the needle deflects inside the field."
+        },
+        {
+          "type": "flashcard",
+          "difficulty": "medium",
+          "text": "Why can two magnetic field lines never intersect each other?",
+          "answer": "At the point of intersection, the compass needle would have to point in two different directions at the same time, which is impossible. So field lines never intersect.",
+          "explanation": "One point can have only one net field direction."
+        },
+        {
+          "type": "flashcard",
+          "difficulty": "medium",
+          "text": "If you cut a bar magnet into two pieces, do you get an isolated north pole? Explain.",
+          "answer": "No. Each piece becomes a complete magnet with its own north and south poles. Magnetic poles always occur in pairs.",
+          "explanation": "This is why we say isolated magnetic poles do not exist."
+        },
+        {
+          "type": "flashcard",
+          "difficulty": "medium",
+          "text": "How can you tell, from a diagram of field lines, where the field is strongest?",
+          "answer": "Where the field lines are closest (most crowded) together, the magnetic field is strongest — for example near the poles of a bar magnet.",
+          "explanation": "Line density is the visual measure of field strength."
+        },
+        {
+          "type": "flashcard",
+          "difficulty": "hard",
+          "text": "Why does a freely suspended compass needle always align north-south at any place on Earth?",
+          "answer": "The compass needle is a small magnet and Earth behaves like a huge magnet, so the needle aligns with Earth's magnetic field — its north pole pointing toward Earth's geographic north.",
+          "explanation": "Earth's magnetic field extends all around the planet and is roughly aligned north-south."
+        }
+      ]
+    },
+    {
+      "section_no": "12.2",
+      "name": "Magnetic Field Due to a Current-Carrying Conductor",
+      "questions": [
+        {
+          "type": "mcq",
+          "difficulty": "easy",
+          "text": "Who first demonstrated that a current-carrying wire deflects a nearby compass needle?",
+          "options": [
+            "Isaac Newton",
+            "Hans Christian Oersted",
+            "Michael Faraday",
+            "James Clerk Maxwell"
+          ],
+          "correct": 1,
+          "explanation": "Oersted's experiment in 1820 showed that electricity and magnetism are connected."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "easy",
+          "text": "The magnetic field lines around a long straight current-carrying conductor are:",
+          "options": [
+            "Straight lines parallel to the wire",
+            "Concentric circles centred on the wire",
+            "Ellipses",
+            "Spirals that converge at the wire"
+          ],
+          "correct": 1,
+          "explanation": "The field lines are closed circles with the wire at their centre."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "easy",
+          "text": "The direction of the magnetic field around a straight conductor is given by the:",
+          "options": [
+            "Left-hand palm rule",
+            "Right-hand thumb rule",
+            "Fleming's left-hand rule",
+            "Fleming's right-hand rule"
+          ],
+          "correct": 1,
+          "explanation": "Thumb = direction of current, curled fingers = direction of the magnetic field lines."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "easy",
+          "text": "If the direction of current in a wire is reversed, the direction of the magnetic field lines around it:",
+          "options": [
+            "Remains the same",
+            "Also reverses",
+            "Becomes circular",
+            "Disappears"
+          ],
+          "correct": 1,
+          "explanation": "The field direction depends on the current direction (right-hand thumb rule)."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "easy",
+          "text": "The magnetic field due to a straight current-carrying conductor becomes stronger when:",
+          "options": [
+            "The current is decreased",
+            "The distance from the wire is increased",
+            "The current is increased",
+            "The wire is made thicker only"
+          ],
+          "correct": 2,
+          "explanation": "Field strength is directly proportional to the current and decreases with distance."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "medium",
+          "text": "A coil of wire wound into many turns carrying current is called a:",
+          "options": [
+            "Bar magnet",
+            "Solenoid",
+            "Galvanometer",
+            "Commutator"
+          ],
+          "correct": 1,
+          "explanation": "A solenoid is a long coil of many circular turns of insulated wire."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "medium",
+          "text": "The magnetic field inside a long solenoid is:",
+          "options": [
+            "Zero",
+            "Uniform (same at all points)",
+            "Strongest at the ends only",
+            "Circular"
+          ],
+          "correct": 1,
+          "explanation": "Inside a long solenoid the field lines are parallel, so the field is uniform."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "medium",
+          "text": "A solenoid behaves like a:",
+          "options": [
+            "Conductor only",
+            "Bar magnet when current flows",
+            "Capacitor",
+            "Resistor"
+          ],
+          "correct": 1,
+          "explanation": "The field pattern of a solenoid resembles that of a bar magnet, so it has north and south poles."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "medium",
+          "text": "Which material is used as the core of an electromagnet to make it temporary and easily switched on/off?",
+          "options": [
+            "Steel",
+            "Soft iron",
+            "Copper",
+            "Aluminium"
+          ],
+          "correct": 1,
+          "explanation": "Soft iron loses its magnetism quickly when the current is switched off, so it is ideal for electromagnets."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "medium",
+          "text": "The strength of the magnetic field produced by a solenoid can be increased by:",
+          "options": [
+            "Increasing the number of turns",
+            "Increasing the current",
+            "Using a soft iron core",
+            "All of the above"
+          ],
+          "correct": 3,
+          "explanation": "All three factors — turns, current, and a soft iron core — strengthen the solenoid's field."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "hard",
+          "text": "In Oersted's experiment, the deflection of the compass needle was maximum when the needle was placed:",
+          "options": [
+            "Parallel to the wire and directly above it",
+            "Perpendicular to the wire",
+            "Far away from the wire",
+            "Inside the battery"
+          ],
+          "correct": 0,
+          "explanation": "The field lines are concentric circles, so the field acts on the needle when it is parallel to the wire, near it."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "hard",
+          "text": "When the current in a wire flows from south to north and a compass is placed above the wire, the north pole of the needle deflects towards the:",
+          "options": [
+            "East",
+            "West",
+            "North",
+            "South"
+          ],
+          "correct": 0,
+          "explanation": "Using the right-hand thumb rule (thumb = current toward north), the field lines above the wire point eastward, so the compass needle deflects toward the east."
+        },
+        {
+          "type": "flashcard",
+          "difficulty": "easy",
+          "text": "What did Oersted's experiment demonstrate?",
+          "answer": "It demonstrated that a current-carrying conductor produces a magnetic field around it — a compass needle placed near the wire deflects when current flows.",
+          "explanation": "This was the first evidence linking electricity and magnetism."
+        },
+        {
+          "type": "flashcard",
+          "difficulty": "easy",
+          "text": "State the right-hand thumb rule.",
+          "answer": "If the current-carrying conductor is held in the right hand so that the thumb points in the direction of the current, the direction in which the fingers curl gives the direction of the magnetic field lines.",
+          "explanation": "Used to find the direction of the field around a straight conductor."
+        },
+        {
+          "type": "flashcard",
+          "difficulty": "medium",
+          "text": "Describe the shape of the magnetic field around a straight current-carrying conductor.",
+          "answer": "The field lines are concentric circles centred on the wire. Closer to the wire the circles are closer together (stronger field); the direction is given by the right-hand thumb rule.",
+          "explanation": "Field strength decreases as you move away from the wire."
+        },
+        {
+          "type": "flashcard",
+          "difficulty": "medium",
+          "text": "Why does a solenoid behave like a bar magnet?",
+          "answer": "The field lines around a solenoid are identical in shape to those of a bar magnet — they emerge from one end (north pole) and enter the other (south pole), with a uniform field inside.",
+          "explanation": "The parallel field lines inside make it act like a strong magnet while current flows."
+        },
+        {
+          "type": "flashcard",
+          "difficulty": "medium",
+          "text": "List three ways to increase the strength of an electromagnet.",
+          "answer": "1) Increase the number of turns of the coil, 2) increase the current flowing through it, 3) put a soft iron core inside the coil.",
+          "explanation": "All three increase the magnetic field strength of the electromagnet."
+        }
+      ]
+    },
+    {
+      "section_no": "12.3",
+      "name": "Force on a Current-Carrying Conductor in a Magnetic Field",
+      "questions": [
+        {
+          "type": "mcq",
+          "difficulty": "easy",
+          "text": "A current-carrying conductor placed in a magnetic field experiences a force. This was discovered by:",
+          "options": [
+            "Oersted",
+            "Andre Marie Ampere",
+            "Michael Faraday",
+            "James Prescott Joule"
+          ],
+          "correct": 1,
+          "explanation": "Ampere first demonstrated the force on a current-carrying conductor in a magnetic field."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "easy",
+          "text": "The direction of force on a current-carrying conductor in a magnetic field is given by:",
+          "options": [
+            "Right-hand thumb rule",
+            "Fleming's left-hand rule",
+            "Fleming's right-hand rule",
+            "Lenz's law"
+          ],
+          "correct": 1,
+          "explanation": "Fleming's left-hand rule: thumb = force, forefinger = field, middle finger = current."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "easy",
+          "text": "In Fleming's left-hand rule, the forefinger indicates the direction of the:",
+          "options": [
+            "Current",
+            "Force",
+            "Magnetic field",
+            "Motion of the conductor"
+          ],
+          "correct": 2,
+          "explanation": "Forefinger = field, middle finger = current, thumb = force (motion)."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "easy",
+          "text": "The force on a current-carrying conductor in a magnetic field is maximum when the conductor is:",
+          "options": [
+            "Parallel to the field",
+            "Perpendicular to the field",
+            "At 45° to the field",
+            "In any orientation — it is constant"
+          ],
+          "correct": 1,
+          "explanation": "The force is F = BIL sinθ; sinθ is maximum (1) when θ = 90°, i.e. perpendicular to the field."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "medium",
+          "text": "If the current through a conductor in a magnetic field is doubled, the force on it:",
+          "options": [
+            "Stays the same",
+            "Doubles",
+            "Halves",
+            "Becomes zero"
+          ],
+          "correct": 1,
+          "explanation": "Force is directly proportional to the current (F ∝ I), so doubling I doubles F."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "medium",
+          "text": "The electric motor works on the principle that:",
+          "options": [
+            "A current-carrying conductor experiences a force in a magnetic field",
+            "A moving magnet induces current in a coil",
+            "Charges repel each other",
+            "Electricity produces heat in a conductor"
+          ],
+          "correct": 0,
+          "explanation": "The motor converts electrical energy into mechanical energy using the force on a current-carrying coil in a magnetic field."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "medium",
+          "text": "The device used to reverse the direction of current through the coil of a DC motor, so that it keeps rotating, is the:",
+          "options": [
+            "Battery",
+            "Split-ring commutator",
+            "Galvanometer",
+            "Resistor"
+          ],
+          "correct": 1,
+          "explanation": "The commutator reverses the current in the coil every half rotation, keeping the torque in the same direction."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "medium",
+          "text": "If both the direction of current and the direction of the magnetic field are reversed together, the force on the conductor will:",
+          "options": [
+            "Reverse",
+            "Become zero",
+            "Remain in the same direction",
+            "Become unpredictable"
+          ],
+          "correct": 2,
+          "explanation": "Reversing both factors cancels out — the force direction stays the same."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "medium",
+          "text": "The direction of rotation of a DC motor can be reversed by:",
+          "options": [
+            "Reversing the direction of current",
+            "Reversing the direction of the magnetic field",
+            "Reversing either the current or the magnetic field",
+            "Increasing the speed of rotation"
+          ],
+          "correct": 2,
+          "explanation": "Reversing one of the two (current or field) flips the force, hence the rotation direction."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "hard",
+          "text": "A conductor carrying current parallel to a magnetic field experiences:",
+          "options": [
+            "Maximum force",
+            "A small force",
+            "No force at all",
+            "A force perpendicular to both"
+          ],
+          "correct": 2,
+          "explanation": "F = BIL sinθ, and sinθ = 0 when θ = 0°, so a conductor parallel to the field feels no force."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "hard",
+          "text": "In Fleming's left-hand rule, if the thumb points towards you and the forefinger points up, the middle finger points:",
+          "options": [
+            "Up",
+            "Down",
+            "To your right",
+            "To your left"
+          ],
+          "correct": 2,
+          "explanation": "The three fingers are mutually perpendicular: thumb = force (towards you), forefinger = field (up), so current (middle finger) must point to the right."
+        },
+        {
+          "type": "mcq",
+          "difficulty": "hard",
+          "text": "The force on a conductor of length L carrying current I in a magnetic field B depends on:",
+          "options": [
+            "B and I only",
+            "I and L only",
+            "B, I and L",
+            "Only on B"
+          ],
+          "correct": 2,
+          "explanation": "F = BIL sinθ — the force depends on field strength, current, conductor length, and the angle between them."
+        },
+        {
+          "type": "flashcard",
+          "difficulty": "easy",
+          "text": "State Fleming's left-hand rule.",
+          "answer": "Stretch the thumb, forefinger and middle finger of the left hand mutually perpendicular to each other. Forefinger = direction of magnetic field, middle finger = direction of current, thumb = direction of force (motion) on the conductor.",
+          "explanation": "Used to find the direction of force on a current-carrying conductor in a magnetic field."
+        },
+        {
+          "type": "flashcard",
+          "difficulty": "medium",
+          "text": "State the principle of the electric motor.",
+          "answer": "An electric motor works on the principle that a current-carrying conductor placed in a magnetic field experiences a force, which makes the coil rotate. It converts electrical energy into mechanical energy.",
+          "explanation": "The same principle is used in fans, mixers, and many household appliances."
+        },
+        {
+          "type": "flashcard",
+          "difficulty": "medium",
+          "text": "A conductor carrying current is placed parallel to a magnetic field. What force does it experience, and why?",
+          "answer": "It experiences no force, because the angle between the current and the field is 0°, and F = BIL sin0° = 0.",
+          "explanation": "Force is maximum only when the conductor is perpendicular to the field."
+        },
+        {
+          "type": "flashcard",
+          "difficulty": "medium",
+          "text": "How can the direction of rotation of a DC motor be reversed?",
+          "answer": "By reversing either the direction of current in the coil or the direction of the magnetic field (the two sides of the magnet).",
+          "explanation": "Reversing one factor flips the direction of the force on the conductor."
+        },
+        {
+          "type": "flashcard",
+          "difficulty": "hard",
+          "text": "What is the role of the split-ring commutator in a DC motor?",
+          "answer": "The split-ring commutator reverses the direction of current in the coil every half rotation, so the torque keeps acting in the same direction and the coil continues to rotate in one direction.",
+          "explanation": "Without it, the coil would oscillate and stop after half a rotation."
+        }
+      ]
+    }
+  ]
+}

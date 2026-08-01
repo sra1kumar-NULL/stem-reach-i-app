@@ -2,7 +2,7 @@
   "name": "daily-revision-app",
   "private": true,
   "version": "0.1.0",
-  "description": "Daily Revision App — STEMRI / MES School Lakkere. See docs/.",
+  "description": "Daily Revision App — STEMRI.",
   "workspaces": [
     "shared",
     "api",
