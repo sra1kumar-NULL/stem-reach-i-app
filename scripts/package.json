@@ -5,12 +5,14 @@
   "type": "module",
   "scripts": {
     "seed": "tsx src/seed.ts",
-    "verify": "tsx src/verify.ts"
+    "verify": "tsx src/verify.ts",
+    "create-users": "tsx src/create-users.ts"
   },
   "dependencies": {
     "@stemreach/core": "*",
     "dotenv": "^16.4.7",
-    "pg": "^8.13.1"
+    "pg": "^8.13.1",
+    "@supabase/supabase-js": "^2.48.1"
   },
   "devDependencies": {
     "tsx": "^4.19.2",

@@ -131,7 +131,7 @@ export const SyllabusResponse = z.object({
 export type SyllabusResponse = z.infer<typeof SyllabusResponse>;
 
 export const ActivationResponse = z.object({
-  daily_set_id: z.string().uuid(),
+  daily_set_id: z.string().uuid().nullable(),
   date: z.string(),
   sections: z.array(
     z.object({ id: z.string().uuid(), section_no: z.string(), name: z.string(), question_count: z.number().int() }),
