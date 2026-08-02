@@ -1,6 +1,7 @@
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StyleSheet } from 'react-native';
 
+import { BackendStatus } from '@/components/backend-status';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 
@@ -16,6 +17,8 @@ export default function HomeScreen() {
             STEMRI · MES School Lakkere
           </ThemedText>
         </ThemedView>
+
+        <BackendStatus />
 
         <ThemedView type="backgroundElement" style={styles.card}>
           <ThemedText style={styles.line}>Student feed &amp; teacher dashboard land in M3 (next milestone).</ThemedText>
