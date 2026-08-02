@@ -2,9 +2,9 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import dotenv from "dotenv";
 import { eq } from "drizzle-orm";
-import { makeDb } from "@dr/shared/db/client";
-import { chapters, sections, questions } from "@dr/shared/db/schema";
-import { SeedContent, type SeedQuestion } from "@dr/shared/content";
+import { makeDb } from "@stemreach/core/db/client";
+import { chapters, sections, questions } from "@stemreach/core/db/schema";
+import { SeedContent, type SeedQuestion } from "@stemreach/core/content";
 
 dotenv.config({
   path: [path.resolve(import.meta.dirname, "../../api/.env"), path.resolve(import.meta.dirname, "../.env")],

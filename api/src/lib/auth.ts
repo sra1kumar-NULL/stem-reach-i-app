@@ -1,6 +1,6 @@
 import type { MiddlewareHandler, Context, Next } from "hono";
 import { eq } from "drizzle-orm";
-import { profiles, type Profile } from "@dr/shared/db/schema";
+import { profiles, type Profile } from "@stemreach/core/db/schema";
 import { unauthorized } from "./http.js";
 import type { AppContext } from "./http.js";
 

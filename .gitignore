@@ -12,3 +12,4 @@ coverage/
 *.log
 mobile/ios/
 mobile/android/
+mobile/node_modules/

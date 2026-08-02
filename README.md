@@ -16,7 +16,7 @@ Bite-sized daily revision for Class 10 Science — reels-style vertical feed of 
 |---|---|
 | `mobile/` | Expo RN app (student feed + teacher dashboard) |
 | `api/` | HTTP API — feed, submissions, activations, reports |
-| `shared/` | Zod contracts + DB schema + types shared by api, mobile, scripts |
+| `core/` | Contracts, DB schema & content schemas — shared by api, mobile, scripts |
 | `scripts/` | seed/verify CLI for the question bank |
 | `content/` | Version-controlled question bank JSON |
 

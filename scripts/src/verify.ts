@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { SeedContent } from "@dr/shared/content";
+import { SeedContent } from "@stemreach/core/content";
 
 const CONTENT_DIR = path.resolve(process.cwd(), "../content");
 const DEFAULT_FILE = process.argv[2] ?? "ch12.json";

@@ -1,10 +1,10 @@
 import "dotenv/config";
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.js";
-import { makeDb } from "@dr/shared/db/client";
+import { makeDb } from "@stemreach/core/db/client";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { AppContext } from "./lib/http.js";
-import type { Db } from "@dr/shared/db/client";
+import type { Db } from "@stemreach/core/db/client";
 
 function requiredEnv(name: string): string {
   const value = process.env[name];

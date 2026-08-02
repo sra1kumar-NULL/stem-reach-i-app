@@ -1,5 +1,5 @@
 {
-  "name": "@dr/api",
+  "name": "@stemreach/api",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,7 +9,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@dr/shared": "*",
+    "@stemreach/core": "*",
     "@hono/node-server": "^1.13.8",
     "@supabase/supabase-js": "^2.48.1",
     "dotenv": "^16.4.7",

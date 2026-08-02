@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "Daily Revision App — STEMRI.",
   "workspaces": [
-    "shared",
+    "core",
     "api",
     "scripts"
   ],

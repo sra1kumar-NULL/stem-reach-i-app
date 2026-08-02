@@ -1,5 +1,5 @@
 {
-  "name": "@dr/scripts",
+  "name": "@stemreach/scripts",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -8,7 +8,7 @@
     "verify": "tsx src/verify.ts"
   },
   "dependencies": {
-    "@dr/shared": "*",
+    "@stemreach/core": "*",
     "dotenv": "^16.4.7",
     "pg": "^8.13.1"
   },

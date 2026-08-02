@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Db } from "@dr/shared/db/client";
-import type { ApiError } from "@dr/shared";
+import type { Db } from "@stemreach/core/db/client";
+import type { ApiError } from "@stemreach/core";
 
 export interface AppContext {
   db: Db;
