@@ -1,10 +1,14 @@
-import "dotenv/config";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import dotenv from "dotenv";
 import { eq } from "drizzle-orm";
 import { makeDb } from "@dr/shared/db/client";
 import { chapters, sections, questions } from "@dr/shared/db/schema";
 import { SeedContent, type SeedQuestion } from "@dr/shared/content";
+
+dotenv.config({
+  path: [path.resolve(import.meta.dirname, "../../api/.env"), path.resolve(import.meta.dirname, "../.env")],
+});
 
 const CONTENT_DIR = path.resolve(process.cwd(), "../content");
 const DEFAULT_FILE = process.argv[2] ?? "ch12.json";
