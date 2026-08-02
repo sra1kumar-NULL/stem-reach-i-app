@@ -43,6 +43,7 @@ export const questions = pgTable(
     questionText: text("question_text").notNull(),
     options: jsonb("options").$type<string[] | null>(),
     correctOption: smallint("correct_option"),
+    answer: text("answer"),
     explanation: text("explanation"),
     difficulty: text("difficulty", { enum: ["easy", "medium", "hard"] }).notNull().default("medium"),
     enabled: boolean("enabled").notNull().default(true),

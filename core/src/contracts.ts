@@ -28,6 +28,7 @@ export const QuestionDto = z.object({
   type: QUESTION_TYPE,
   question_text: z.string(),
   options: z.array(z.string()).nullable(),
+  answer: z.string().nullable(),
 });
 export type QuestionDto = z.infer<typeof QuestionDto>;
 

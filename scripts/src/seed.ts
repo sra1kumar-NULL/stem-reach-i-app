@@ -90,6 +90,7 @@ async function main() {
         questionText: q.text,
         options: q.options ?? null,
         correctOption: q.correct ?? null,
+        answer: q.answer ?? null,
         explanation: q.explanation,
         difficulty: q.difficulty,
       };

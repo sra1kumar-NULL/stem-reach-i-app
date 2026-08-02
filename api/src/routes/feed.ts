@@ -108,6 +108,7 @@ export function routes(ctx: AppContext): Hono {
         type: q.qtype,
         question_text: q.questionText,
         options: q.options,
+        answer: q.answer,
       })),
       progress,
     };
