@@ -1,0 +1,47 @@
+{
+  "note": "DUMMY demo credentials only — for local development and pilot testing. Not real accounts. Passwords are intentionally shared and public.",
+  "supabase": {
+    "project_ref": "cihobqescuhuxtiogivb",
+    "region": "ap-northeast-2",
+    "class_section": "10A"
+  },
+  "common_password": "Stemri@2026",
+  "accounts": [
+    {
+      "role": "teacher",
+      "name": "Mrs. Kavya (Teacher)",
+      "email": "teacher@stemri.local",
+      "password": "Stemri@2026"
+    },
+    {
+      "role": "student",
+      "name": "Ananya",
+      "email": "s1@stemri.local",
+      "password": "Stemri@2026"
+    },
+    {
+      "role": "student",
+      "name": "Rahul",
+      "email": "s2@stemri.local",
+      "password": "Stemri@2026"
+    },
+    {
+      "role": "student",
+      "name": "Meera",
+      "email": "s3@stemri.local",
+      "password": "Stemri@2026"
+    },
+    {
+      "role": "student",
+      "name": "Arjun",
+      "email": "s4@stemri.local",
+      "password": "Stemri@2026"
+    },
+    {
+      "role": "student",
+      "name": "Divya",
+      "email": "s5@stemri.local",
+      "password": "Stemri@2026"
+    }
+  ]
+}
