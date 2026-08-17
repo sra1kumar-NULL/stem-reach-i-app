@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, TextInput } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Animated, KeyboardAvoidingView, Platform, Pressable, StyleSheet, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -13,6 +13,14 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const pop = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.delay(120),
+      Animated.spring(pop, { toValue: 1, useNativeDriver: true, friction: 5, tension: 70 }),
+    ]).start();
+  }, [pop]);
 
   const submit = async () => {
     if (!email.trim() || !password) {
@@ -35,6 +43,9 @@ export default function LoginScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safe}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.inner}>
+          <Animated.Text style={[styles.emoji, { transform: [{ scale: pop.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] }) }] }]}>
+            🚀
+          </Animated.Text>
           <ThemedText type="title" style={styles.title}>
             Daily Revision
           </ThemedText>
@@ -86,6 +97,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   safe: { flex: 1 },
   inner: { flex: 1, justifyContent: 'center', padding: 24, gap: 12 },
+  emoji: { fontSize: 56, textAlign: 'center' },
   title: { textAlign: 'center' },
   subtitle: { textAlign: 'center', marginBottom: 24 },
   card: { borderRadius: 20, padding: 20, gap: 12 },

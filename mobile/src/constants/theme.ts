@@ -26,6 +26,23 @@ export const Colors = {
 
 export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
 
+/** Playful accent palette shared across light & dark mode (kid-friendly app). */
+export const Accents = {
+  primary: '#3c87f7',
+  primarySoft: 'rgba(60, 135, 247, 0.14)',
+  success: '#2ea043',
+  successSoft: 'rgba(46, 160, 67, 0.16)',
+  warn: '#d29922',
+  warnSoft: 'rgba(210, 153, 34, 0.16)',
+  danger: '#f85149',
+  dangerSoft: 'rgba(248, 81, 73, 0.16)',
+  purple: '#8b5cf6',
+  purpleSoft: 'rgba(139, 92, 246, 0.16)',
+  pink: '#ec4899',
+  pinkSoft: 'rgba(236, 72, 153, 0.16)',
+  teal: '#12a594',
+} as const;
+
 export const Fonts = Platform.select({
   ios: {
     /** iOS `UIFontDescriptorSystemDesignDefault` */

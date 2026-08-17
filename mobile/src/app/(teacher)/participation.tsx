@@ -1,12 +1,32 @@
 import { Link, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getParticipation } from '@/api/client';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { Accents } from '@/constants/theme';
 import type { ParticipationReport } from '@stemreach/core';
+
+const AVATAR_COLORS = [Accents.purple, Accents.teal, Accents.pink, Accents.primary, Accents.warn, '#e5484d'];
+
+function initials(name: string): string {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? '')
+    .join('');
+}
+
+interface Row {
+  id: string;
+  name: string;
+  done: boolean;
+  completed: boolean;
+  answered: number;
+}
 
 export default function ParticipationScreen() {
   const [date] = useState(() => new Date().toISOString().slice(0, 10));
@@ -25,10 +45,12 @@ export default function ParticipationScreen() {
     }, [date]),
   );
 
-  const rows = [
-    ...(report?.done ?? []).map((s) => ({ id: s.id, name: s.name, status: `done · ${s.answered} answers${s.completed ? ' · ✓ complete' : ''}` })),
-    ...(report?.pending ?? []).map((s) => ({ id: s.id, name: s.name, status: 'pending' })),
+  const rows: Row[] = [
+    ...(report?.done ?? []).map((s) => ({ id: s.id, name: s.name, done: true, completed: s.completed, answered: s.answered })),
+    ...(report?.pending ?? []).map((s) => ({ id: s.id, name: s.name, done: false, completed: false, answered: 0 })),
   ];
+
+  const completedCount = report?.done.filter((s) => s.completed).length ?? 0;
 
   return (
     <ThemedView style={styles.container}>
@@ -41,9 +63,6 @@ export default function ParticipationScreen() {
             Participation
           </ThemedText>
         </ThemedView>
-        <ThemedText type="small" themeColor="textSecondary">
-          {date} · Class 10A
-        </ThemedText>
 
         {loading ? (
           <ActivityIndicator size="large" style={{ marginTop: 40 }} />
@@ -55,20 +74,45 @@ export default function ParticipationScreen() {
           <FlatList
             data={rows}
             keyExtractor={(r) => r.id}
-            renderItem={({ item }) => (
-              <ThemedView type={item.status.startsWith('pending') ? undefined : 'backgroundElement'} style={[styles.row, item.status.startsWith('pending') && styles.rowPending]}>
-                <ThemedText>{item.name}</ThemedText>
-                <ThemedText type="small" themeColor={item.status.startsWith('pending') ? 'textSecondary' : undefined}>
-                  {item.status}
-                </ThemedText>
+            renderItem={({ item, index }) => (
+              <ThemedView type="backgroundElement" style={[styles.row, !item.done && styles.rowPending]}>
+                <View style={[styles.avatar, { backgroundColor: AVATAR_COLORS[index % AVATAR_COLORS.length] }]}>
+                  <Text style={styles.avatarText}>{initials(item.name)}</Text>
+                </View>
+                <ThemedView style={styles.rowBody}>
+                  <ThemedText>{item.name}</ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {item.done ? `${item.answered} answers` : 'not started yet'}
+                  </ThemedText>
+                </ThemedView>
+                <View style={[styles.statusChip, { backgroundColor: !item.done ? '#333' : item.completed ? Accents.success : Accents.warn }]}>
+                  <Text style={styles.statusText}>{!item.done ? '⏳ pending' : item.completed ? '✅ done' : '▶ in progress'}</Text>
+                </View>
               </ThemedView>
             )}
             ListHeaderComponent={
-              <ThemedText type="smallBold" style={styles.countLine}>
-                {report?.done.length ?? 0} done · {report?.pending.length ?? 0} pending of {report?.total_students ?? 0}
-              </ThemedText>
+              <View style={styles.statsRow}>
+                <ThemedView type="backgroundElement" style={styles.statChip}>
+                  <Text style={styles.statValue}>{completedCount}/{report?.total_students ?? 0}</Text>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    completed
+                  </ThemedText>
+                </ThemedView>
+                <ThemedView type="backgroundElement" style={styles.statChip}>
+                  <Text style={styles.statValue}>{report?.done.length ?? 0}</Text>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    started
+                  </ThemedText>
+                </ThemedView>
+                <ThemedView type="backgroundElement" style={styles.statChip}>
+                  <Text style={styles.statValue}>{report?.pending.length ?? 0}</Text>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    pending
+                  </ThemedText>
+                </ThemedView>
+              </View>
             }
-            contentContainerStyle={{ paddingBottom: 40 }}
+            contentContainerStyle={{ paddingBottom: 40, gap: 8 }}
           />
         )}
       </SafeAreaView>
@@ -81,16 +125,22 @@ const styles = StyleSheet.create({
   safe: { flex: 1, padding: 16, gap: 8 },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   back: { paddingVertical: 4 },
-  backText: { color: '#3c87f7', fontSize: 20 },
+  backText: { color: Accents.primary, fontSize: 20 },
   header: { fontSize: 28 },
-  countLine: { marginVertical: 12 },
+  statsRow: { flexDirection: 'row', gap: 10, marginVertical: 12 },
+  statChip: { flex: 1, alignItems: 'center', borderRadius: 14, paddingVertical: 12, gap: 2 },
+  statValue: { fontSize: 22, fontWeight: '800', color: '#fff' },
   row: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 8,
+    gap: 12,
+    borderRadius: 14,
+    padding: 12,
   },
-  rowPending: { borderWidth: 1, borderColor: '#444' },
+  rowPending: { opacity: 0.7 },
+  avatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+  rowBody: { flex: 1, gap: 2 },
+  statusChip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  statusText: { color: '#fff', fontWeight: '800', fontSize: 12 },
 });

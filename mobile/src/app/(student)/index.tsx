@@ -1,11 +1,13 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Animated, Easing, FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getFeedToday, getMe, submitAnswer } from '@/api/client';
 import { QuestionCard } from '@/components/question-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { Accents } from '@/constants/theme';
 import { useAuth } from '@/state/auth';
 import type { FeedResponse, SubmissionResponse } from '@stemreach/core';
 
@@ -19,6 +21,7 @@ export default function FeedScreen() {
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState({ correct: 0, attempted: 0 });
   const [done, setDone] = useState(false);
+  const barWidth = useRef(new Animated.Value(0)).current;
 
   const load = useCallback(() => {
     setLoading(true);
@@ -33,6 +36,18 @@ export default function FeedScreen() {
   }, []);
 
   useEffect(load, [load]);
+
+  const shownAnswered = (feed?.progress.answered ?? 0) + stats.attempted;
+  const progressPct = feed && feed.progress.total > 0 ? shownAnswered / feed.progress.total : 0;
+
+  useEffect(() => {
+    Animated.timing(barWidth, {
+      toValue: progressPct * 100,
+      duration: 500,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [barWidth, progressPct]);
 
   const sectionLabel = (sectionId: string) =>
     feed?.sections.find((s) => s.id === sectionId)?.name ?? 'Revision';
@@ -93,11 +108,11 @@ export default function FeedScreen() {
           Your teacher hasn't activated today's topics yet. Check back after class!
         </ThemedText>
         <ThemedText themeColor="textSecondary">Current streak: {streak} 🔥</ThemedText>
-        <Pressable style={styles.retryBtn} onPress={load}>
+        <Pressable style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]} onPress={load}>
           <Text style={styles.retryLabel}>Refresh</Text>
         </Pressable>
-        <Pressable onPress={signOut}>
-          <ThemedText themeColor="textSecondary">Sign out</ThemedText>
+        <Pressable onPress={() => signOut()} style={({ pressed }) => [styles.signoutPill, pressed && { opacity: 0.6 }]}>
+          <Text style={styles.signoutPillText}>⏻ Sign out</Text>
         </Pressable>
       </ThemedView>
     );
@@ -122,14 +137,20 @@ export default function FeedScreen() {
   return (
     <ThemedView style={styles.container}>
       <View style={[styles.header, { top: height > 700 ? 48 : 24 }]} pointerEvents="box-none">
-        <ThemedView style={styles.pill}>
-          <ThemedText type="smallBold">
-            {feed.progress.answered}/{feed.progress.total}
-          </ThemedText>
+        <ThemedView style={styles.progressCard}>
+          <View style={styles.progressRow}>
+            <ThemedText type="smallBold">
+              ⚡ {shownAnswered}/{feed.progress.total}
+            </ThemedText>
+            <ThemedText type="smallBold">🔥 {streak}</ThemedText>
+          </View>
+          <View style={styles.barTrack}>
+            <Animated.View style={[styles.barFill, { width: barWidth }]} />
+          </View>
         </ThemedView>
-        <ThemedView style={styles.pill}>
-          <ThemedText type="smallBold">🔥 {streak}</ThemedText>
-        </ThemedView>
+        <Pressable onPress={() => signOut()} style={({ pressed }) => [styles.signoutBtn, pressed && { opacity: 0.6 }]}>
+          <Text style={styles.signoutBtnText}>⏻</Text>
+        </Pressable>
       </View>
 
       <FlatList
@@ -168,13 +189,32 @@ const styles = StyleSheet.create({
     right: 16,
     zIndex: 10,
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
   },
-  pill: {
-    borderRadius: 999,
+  progressCard: {
+    flex: 1,
+    borderRadius: 14,
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 10,
+    gap: 8,
   },
+  progressRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  barTrack: { height: 8, borderRadius: 4, backgroundColor: '#333', overflow: 'hidden' },
+  barFill: { height: 8, borderRadius: 4, backgroundColor: Accents.primary },
+  signoutBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1,
+    borderColor: '#555',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.25)',
+  },
+  signoutBtnText: { fontSize: 18 },
+  signoutPill: { borderWidth: 1, borderColor: '#555', borderRadius: 999, paddingHorizontal: 18, paddingVertical: 8 },
+  signoutPillText: { color: '#888', fontWeight: '600' },
   emptyTitle: { textAlign: 'center' },
   emptyText: { textAlign: 'center' },
   retryBtn: { backgroundColor: '#3c87f7', borderRadius: 12, paddingVertical: 12, paddingHorizontal: 24 },

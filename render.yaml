@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: stemreach-api
+    runtime: node
+    repo: https://github.com/sra1kumar-NULL/stem-reach-i-app
+    plan: free
+    rootDir: api
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/healthz
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
