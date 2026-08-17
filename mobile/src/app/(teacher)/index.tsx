@@ -1,13 +1,14 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Link } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, FlatList, Pressable, StyleSheet, Text } from 'react-native';
+import { ActivityIndicator, Animated, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { activate, getActivations, getSyllabus } from '@/api/client';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useToast } from '@/components/toast';
-import { Accents } from '@/constants/theme';
+import { Accents, Nord } from '@/constants/theme';
 import { useAuth } from '@/state/auth';
 import type { SyllabusResponse } from '@stemreach/core';
 
@@ -84,7 +85,8 @@ export default function ActivateScreen() {
             onPress={() => signOut()}
             style={({ pressed }) => [styles.signoutBtn, pressed && styles.pressed]}
           >
-            <Text style={styles.signoutText}>⏻ Sign out</Text>
+            <Ionicons name="log-out-outline" size={14} color={Nord.nord4} />
+            <Text style={styles.signoutText}>Sign out</Text>
           </Pressable>
         </ThemedView>
 
@@ -112,7 +114,7 @@ export default function ActivateScreen() {
               const wasToday = todaySections.has(item.id);
               return (
                 <Pressable onPress={() => toggle(item.id)} style={[styles.row, isOn && styles.rowOn]}>
-                  <ThemedView style={[styles.dot, { backgroundColor: isOn ? Accents.success : '#555' }]} />
+                  <ThemedView style={[styles.dot, { backgroundColor: isOn ? Accents.success : Accents.border }]} />
                   <ThemedView style={styles.rowBody}>
                     <ThemedText style={styles.rowLabel}>
                       {item.chapter} — {item.label}
@@ -134,14 +136,23 @@ export default function ActivateScreen() {
             {selected.size} selected · {rows.filter((r) => selected.has(r.id)).reduce((n, r) => n + r.count, 0)} questions
           </ThemedText>
           <Pressable style={[styles.activateBtn, (busy || selected.size === 0) && styles.activateDisabled]} onPress={save} disabled={busy}>
-            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.activateLabel}>Activate Revision 🚀</Text>}
+            {busy ? (
+              <ActivityIndicator color={Nord.nord6} />
+            ) : (
+              <View style={styles.activateLabelRow}>
+                <Ionicons name="rocket-outline" size={18} color={Nord.nord6} />
+                <Text style={styles.activateLabel}>Activate Revision</Text>
+              </View>
+            )}
           </Pressable>
           <ThemedView style={styles.navRow}>
             <Link href="/(teacher)/participation" style={styles.navLink}>
-              <ThemedText style={styles.navText}>👥 Participation</ThemedText>
+              <Ionicons name="people-outline" size={16} color={Accents.primary} />
+              <ThemedText style={styles.navText}>Participation</ThemedText>
             </Link>
             <Link href="/(teacher)/reports" style={styles.navLink}>
-              <ThemedText style={styles.navText}>📊 Performance</ThemedText>
+              <Ionicons name="bar-chart-outline" size={16} color={Accents.primary} />
+              <ThemedText style={styles.navText}>Performance</ThemedText>
             </Link>
           </ThemedView>
         </ThemedView>
@@ -155,18 +166,27 @@ const styles = StyleSheet.create({
   safe: { flex: 1, padding: 16, gap: 12 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   header: { fontSize: 28 },
-  signoutBtn: { borderWidth: 1, borderColor: '#555', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
-  signoutText: { color: '#888', fontSize: 13, fontWeight: '600' },
+  signoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: Accents.border,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  signoutText: { color: Nord.nord4, fontSize: 13, fontWeight: '600' },
   pressed: { opacity: 0.6 },
   messageBox: { borderRadius: 12, padding: 12, gap: 8 },
   retryBtn: { alignSelf: 'flex-start', backgroundColor: Accents.primary, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 6 },
-  retryLabel: { color: '#fff', fontWeight: '700' },
+  retryLabel: { color: Nord.nord6, fontWeight: '700' },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     borderWidth: 1,
-    borderColor: '#444',
+    borderColor: Accents.border,
     borderRadius: 14,
     padding: 14,
     marginBottom: 8,
@@ -179,8 +199,9 @@ const styles = StyleSheet.create({
   footer: { gap: 8, paddingVertical: 8 },
   activateBtn: { backgroundColor: Accents.primary, borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
   activateDisabled: { opacity: 0.5 },
-  activateLabel: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  activateLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  activateLabel: { color: Nord.nord6, fontWeight: '700', fontSize: 16 },
   navRow: { flexDirection: 'row', justifyContent: 'space-around' },
-  navLink: { padding: 8 },
+  navLink: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8 },
   navText: { color: Accents.primary, fontWeight: '700', fontSize: 15 },
 });

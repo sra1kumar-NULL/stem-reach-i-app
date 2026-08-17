@@ -3,6 +3,7 @@ import { logger } from "hono/logger";
 import { cors } from "hono/cors";
 import { errorHandler, notFoundHandler, type AppContext } from "./lib/http.js";
 import { authMiddleware } from "./lib/auth.js";
+import * as auth from "./routes/auth.js";
 import * as feed from "./routes/feed.js";
 import * as submissions from "./routes/submissions.js";
 import * as me from "./routes/me.js";
@@ -21,6 +22,8 @@ export function createApp(ctx: AppContext): Hono {
   const api = new Hono();
 
   api.get("/healthz", (c) => c.json({ ok: true }));
+
+  api.route("/auth", auth.routes(ctx));
 
   api.use("*", authMiddleware(ctx));
   api.route("/feed", feed.routes(ctx));

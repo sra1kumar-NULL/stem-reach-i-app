@@ -3,7 +3,10 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "dependencies": {
+    "@expo-google-fonts/fredoka": "^0.4.1",
+    "@expo-google-fonts/nunito": "^0.4.2",
     "@expo/ui": "~57.0.8",
+    "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@stemreach/core": "file:../core",
     "@supabase/supabase-js": "^2.111.0",
@@ -13,6 +16,7 @@
     "expo-font": "~57.0.1",
     "expo-glass-effect": "~57.0.1",
     "expo-image": "~57.0.1",
+    "expo-linear-gradient": "~57.0.1",
     "expo-linking": "~57.0.4",
     "expo-router": "~57.0.9",
     "expo-splash-screen": "~57.0.5",

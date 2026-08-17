@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Link, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -6,10 +7,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getParticipation } from '@/api/client';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Accents } from '@/constants/theme';
+import { Accents, Nord } from '@/constants/theme';
 import type { ParticipationReport } from '@stemreach/core';
 
-const AVATAR_COLORS = [Accents.purple, Accents.teal, Accents.pink, Accents.primary, Accents.warn, '#e5484d'];
+const AVATAR_COLORS = [Nord.nord15, Nord.nord7, Nord.nord12, Nord.nord10, Nord.nord13, Nord.nord11];
 
 function initials(name: string): string {
   return name
@@ -38,7 +39,7 @@ export default function ParticipationScreen() {
     useCallback(() => {
       setLoading(true);
       setError(null);
-      getParticipation(date, '10A')
+      getParticipation(date)
         .then(setReport)
         .catch((e) => setError(e instanceof Error ? e.message : 'failed'))
         .finally(() => setLoading(false));
@@ -57,7 +58,8 @@ export default function ParticipationScreen() {
       <SafeAreaView style={styles.safe}>
         <ThemedView style={styles.headerRow}>
           <Link href="/(teacher)" style={styles.back}>
-            <ThemedText style={styles.backText}>‹ Back</ThemedText>
+            <Ionicons name="chevron-back" size={22} color={Accents.primary} />
+            <ThemedText style={styles.backText}>Back</ThemedText>
           </Link>
           <ThemedText type="title" style={styles.header}>
             Participation
@@ -85,8 +87,9 @@ export default function ParticipationScreen() {
                     {item.done ? `${item.answered} answers` : 'not started yet'}
                   </ThemedText>
                 </ThemedView>
-                <View style={[styles.statusChip, { backgroundColor: !item.done ? '#333' : item.completed ? Accents.success : Accents.warn }]}>
-                  <Text style={styles.statusText}>{!item.done ? '⏳ pending' : item.completed ? '✅ done' : '▶ in progress'}</Text>
+                <View style={[styles.statusChip, { backgroundColor: !item.done ? Nord.nord2 : item.completed ? Accents.success : Accents.warn }]}>
+                  <Ionicons name={!item.done ? 'time-outline' : item.completed ? 'checkmark-circle' : 'play-circle'} size={12} color={Nord.nord6} />
+                  <Text style={styles.statusText}>{!item.done ? 'pending' : item.completed ? 'done' : 'in progress'}</Text>
                 </View>
               </ThemedView>
             )}
@@ -129,7 +132,7 @@ const styles = StyleSheet.create({
   header: { fontSize: 28 },
   statsRow: { flexDirection: 'row', gap: 10, marginVertical: 12 },
   statChip: { flex: 1, alignItems: 'center', borderRadius: 14, paddingVertical: 12, gap: 2 },
-  statValue: { fontSize: 22, fontWeight: '800', color: '#fff' },
+  statValue: { fontSize: 22, fontWeight: '800', color: Nord.nord6 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -139,8 +142,8 @@ const styles = StyleSheet.create({
   },
   rowPending: { opacity: 0.7 },
   avatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+  avatarText: { color: Nord.nord6, fontWeight: '800', fontSize: 15 },
   rowBody: { flex: 1, gap: 2 },
-  statusChip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
-  statusText: { color: '#fff', fontWeight: '800', fontSize: 12 },
+  statusChip: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  statusText: { color: Nord.nord6, fontWeight: '800', fontSize: 12 },
 });

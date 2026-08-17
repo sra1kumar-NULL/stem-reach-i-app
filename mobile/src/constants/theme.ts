@@ -1,69 +1,102 @@
 /**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
+ * Nord theme (https://www.nordtheme.com) — the entire app uses this palette.
+ * Dark mode: Polar Night backgrounds. Light mode: Snow Storm backgrounds.
  */
 
 import '@/global.css';
 
 import { Platform } from 'react-native';
 
+/** Raw Nord palette (16 colors). */
+export const Nord = {
+  /** Polar Night — backgrounds */
+  nord0: '#2E3440',
+  nord1: '#3B4252',
+  nord2: '#434C5E',
+  nord3: '#4C566A',
+  /** Snow Storm — text/foregrounds */
+  nord4: '#D8DEE9',
+  nord5: '#E5E9F0',
+  nord6: '#ECEFF4',
+  /** Frost — blues */
+  nord7: '#8FBCBB',
+  nord8: '#88C0D0',
+  nord9: '#81A1C1',
+  nord10: '#5E81AC',
+  /** Aurora — accents */
+  nord11: '#BF616A',
+  nord12: '#D08770',
+  nord13: '#EBCB8B',
+  nord14: '#A3BE8C',
+  nord15: '#B48EAD',
+} as const;
+
 export const Colors = {
   light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
+    text: Nord.nord0,
+    background: Nord.nord6,
+    backgroundElement: Nord.nord5,
+    backgroundSelected: Nord.nord4,
+    textSecondary: Nord.nord3,
   },
   dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
+    text: Nord.nord6,
+    background: Nord.nord0,
+    backgroundElement: Nord.nord1,
+    backgroundSelected: Nord.nord2,
+    textSecondary: Nord.nord4,
   },
 } as const;
 
 export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
 
-/** Playful accent palette shared across light & dark mode (kid-friendly app). */
+/** Semantic accent palette (Nord-derived) shared across light & dark mode. */
 export const Accents = {
-  primary: '#3c87f7',
-  primarySoft: 'rgba(60, 135, 247, 0.14)',
-  success: '#2ea043',
-  successSoft: 'rgba(46, 160, 67, 0.16)',
-  warn: '#d29922',
-  warnSoft: 'rgba(210, 153, 34, 0.16)',
-  danger: '#f85149',
-  dangerSoft: 'rgba(248, 81, 73, 0.16)',
-  purple: '#8b5cf6',
-  purpleSoft: 'rgba(139, 92, 246, 0.16)',
-  pink: '#ec4899',
-  pinkSoft: 'rgba(236, 72, 153, 0.16)',
-  teal: '#12a594',
+  primary: Nord.nord10,
+  primarySoft: 'rgba(94, 129, 172, 0.18)',
+  success: Nord.nord14,
+  successSoft: 'rgba(163, 190, 140, 0.18)',
+  warn: Nord.nord13,
+  warnSoft: 'rgba(235, 203, 139, 0.18)',
+  danger: Nord.nord11,
+  dangerSoft: 'rgba(191, 97, 106, 0.18)',
+  purple: Nord.nord15,
+  purpleSoft: 'rgba(180, 142, 173, 0.18)',
+  pink: Nord.nord12,
+  pinkSoft: 'rgba(208, 135, 112, 0.18)',
+  teal: Nord.nord7,
+  tealSoft: 'rgba(143, 188, 187, 0.18)',
+  /** borders / tracks on dark surfaces */
+  border: Nord.nord3,
+  track: Nord.nord2,
 } as const;
 
 export const Fonts = Platform.select({
   ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
-    sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
+    /** Body font */
+    sans: 'Nunito_400Regular',
+    /** Headings — kid-friendly rounded font */
+    rounded: 'Fredoka_600SemiBold',
+    /** System fallbacks */
     serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
-    rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
     mono: 'ui-monospace',
   },
-  default: {
-    sans: 'normal',
+  android: {
+    sans: 'Nunito_400Regular',
+    rounded: 'Fredoka_600SemiBold',
     serif: 'serif',
-    rounded: 'normal',
+    mono: 'monospace',
+  },
+  default: {
+    sans: 'Nunito_400Regular',
+    rounded: 'Fredoka_600SemiBold',
+    serif: 'serif',
     mono: 'monospace',
   },
   web: {
-    sans: 'var(--font-display)',
-    serif: 'var(--font-serif)',
+    sans: 'var(--font-sans)',
     rounded: 'var(--font-rounded)',
+    serif: 'var(--font-serif)',
     mono: 'var(--font-mono)',
   },
 });

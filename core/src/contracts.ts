@@ -110,6 +110,20 @@ export const MeResponse = z.object({
 });
 export type MeResponse = z.infer<typeof MeResponse>;
 
+export const SignupRequest = z.object({
+  full_name: z.string().min(1, "name is required").max(80),
+  email: z.string().email("enter a valid email"),
+  password: z.string().min(8, "password must be at least 8 characters"),
+  role: ROLE,
+  class_section: z.string().trim().min(1).max(20).optional(),
+});
+export type SignupRequest = z.infer<typeof SignupRequest>;
+
+export const SignupResponse = z.object({
+  ok: z.literal(true),
+});
+export type SignupResponse = z.infer<typeof SignupResponse>;
+
 export const SyllabusResponse = z.object({
   chapters: z.array(
     z.object({

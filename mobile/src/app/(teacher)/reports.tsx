@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Link, useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -6,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getPerformance } from '@/api/client';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Accents } from '@/constants/theme';
+import { Accents, Nord } from '@/constants/theme';
 import type { PerformanceReport } from '@stemreach/core';
 
 const BAR_MAX = 100;
@@ -26,7 +27,7 @@ function initials(name: string): string {
     .join('');
 }
 
-const AVATAR_COLORS = [Accents.purple, Accents.teal, Accents.pink, Accents.primary, Accents.warn, '#e5484d'];
+const AVATAR_COLORS = [Nord.nord15, Nord.nord7, Nord.nord12, Nord.nord10, Nord.nord13, Nord.nord11];
 
 function AnimatedBar({ pct, color }: { pct: number; color: string }) {
   const width = useRef(new Animated.Value(0)).current;
@@ -79,7 +80,8 @@ export default function ReportsScreen() {
       <SafeAreaView style={styles.safe}>
         <ThemedView style={styles.headerRow}>
           <Link href="/(teacher)" style={styles.back}>
-            <ThemedText style={styles.backText}>‹ Back</ThemedText>
+            <Ionicons name="chevron-back" size={22} color={Accents.primary} />
+            <ThemedText style={styles.backText}>Back</ThemedText>
           </Link>
           <ThemedText type="title" style={styles.header}>
             Performance
@@ -98,12 +100,12 @@ export default function ReportsScreen() {
             keyExtractor={(s) => s.section_id}
             renderItem={({ item }) => {
               const pct = item.attempts > 0 ? item.accuracy * 100 : 0;
-              const color = item.attempts > 0 ? accuracyColor(pct) : '#555';
+              const color = item.attempts > 0 ? accuracyColor(pct) : Accents.border;
               return (
                 <ThemedView type="backgroundElement" style={styles.sectionRow}>
                   <ThemedView style={styles.sectionHead}>
                     <ThemedView style={styles.sectionTitleWrap}>
-                      <Text style={[styles.pctBadge, { backgroundColor: item.attempts > 0 ? color : '#333', color: '#fff' }]}>
+                      <Text style={[styles.pctBadge, { backgroundColor: item.attempts > 0 ? color : Nord.nord2, color: Nord.nord6 }]}>
                         {item.attempts > 0 ? fmt(item.accuracy) : '—'}
                       </Text>
                       <ThemedText type="smallBold" style={styles.sectionName}>
@@ -171,19 +173,19 @@ const styles = StyleSheet.create({
   header: { fontSize: 28 },
   statsRow: { flexDirection: 'row', gap: 10, marginTop: 4 },
   statChip: { flex: 1, alignItems: 'center', borderRadius: 14, paddingVertical: 12, gap: 2 },
-  statValue: { fontSize: 22, fontWeight: '800', color: '#fff' },
+  statValue: { fontSize: 22, fontWeight: '800', color: Nord.nord6 },
   sectionRow: { borderRadius: 14, padding: 14, marginTop: 10, gap: 10 },
   sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   sectionTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
   sectionName: { flexShrink: 1 },
   pctBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, fontWeight: '800', fontSize: 14, overflow: 'hidden' },
-  barTrack: { height: 8, borderRadius: 4, backgroundColor: '#333' },
+  barTrack: { height: 8, borderRadius: 4, backgroundColor: Accents.track },
   barFill: { height: 8, borderRadius: 4 },
   studentsHead: { marginTop: 20, gap: 8 },
   studentRow: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14, padding: 12 },
   avatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+  avatarText: { color: Nord.nord6, fontWeight: '800', fontSize: 15 },
   studentBody: { flex: 1, gap: 2 },
   accuracyChip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
-  accuracyChipText: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  accuracyChipText: { color: Nord.nord6, fontWeight: '800', fontSize: 13 },
 });

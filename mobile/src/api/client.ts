@@ -5,6 +5,7 @@ import type {
   MeResponse,
   ParticipationReport,
   PerformanceReport,
+  SignupResponse,
   SubmissionResponse,
   SyllabusResponse,
 } from '@stemreach/core';
@@ -71,6 +72,8 @@ export const submitAnswer = (body: { question_id: string; daily_set_id: string; 
   apiFetch<SubmissionResponse>('/api/submissions', { method: 'POST', body });
 
 export const getSyllabus = () => apiFetch<SyllabusResponse>('/api/syllabus');
+export const signup = (body: { full_name: string; email: string; password: string; role: 'student' | 'teacher'; class_section?: string }) =>
+  apiFetch<SignupResponse>('/api/auth/signup', { method: 'POST', body });
 export const getActivations = (date?: string) => apiFetch<ActivationResponse>(`/api/activations${date ? `?date=${date}` : ''}`);
 export const activate = (body: { date?: string; section_ids: string[] }) =>
   apiFetch<ActivationResponse>('/api/activations', { method: 'POST', body });

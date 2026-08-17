@@ -3,7 +3,7 @@ import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Accents } from '@/constants/theme';
+import { Accents, Nord } from '@/constants/theme';
 import type { QuestionDto, SubmissionResponse } from '@stemreach/core';
 
 interface Props {
@@ -229,7 +229,7 @@ const styles = StyleSheet.create({
   metaChipText: { fontWeight: '800', fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5 },
   question: { fontSize: 26, lineHeight: 36, fontWeight: '600' },
   options: { gap: 12 },
-  option: { borderWidth: 1, borderColor: '#444', borderRadius: 14, padding: 16 },
+  option: { borderWidth: 1, borderColor: Accents.border, borderRadius: 14, padding: 16 },
   optionPressed: { transform: [{ scale: 0.97 }], opacity: 0.85 },
   optionSelected: { borderColor: Accents.primary, backgroundColor: Accents.primarySoft },
   optionCorrect: { backgroundColor: Accents.successSoft, borderColor: Accents.success },
@@ -252,12 +252,12 @@ const styles = StyleSheet.create({
   flipFront: { alignItems: 'stretch' },
   flipHint: { textAlign: 'center' },
   revealBtn: { backgroundColor: Accents.purple, borderRadius: 14, paddingVertical: 18, alignItems: 'center' },
-  revealLabel: { color: '#fff', fontWeight: '700', fontSize: 17 },
+  revealLabel: { color: Nord.nord6, fontWeight: '700', fontSize: 17 },
   answerBox: { borderRadius: 14, padding: 16 },
   answerText: { fontSize: 18, lineHeight: 26 },
   evalRow: { flexDirection: 'row', gap: 12 },
   evalBtn: { flex: 1, borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
   evalRight: { backgroundColor: Accents.success },
   evalAgain: { backgroundColor: Accents.warn },
-  evalLabel: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  evalLabel: { color: Nord.nord6, fontWeight: '700', fontSize: 15 },
 });

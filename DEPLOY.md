@@ -133,12 +133,9 @@ Teachers can use the web version instead.
 | Mobile code | `mobile/` (Expo, screens under `mobile/src/app/`) |
 | Contracts | `core/` (`@stemreach/core`, shared types) |
 | DB schema/seed/users | `scripts/` |
-| School branding | mobile login screen reads the school name from env (see below) |
 | Local dev | terminal 1: `npm run dev:api` (repo root, port 3000) · terminal 2: `npm run dev` (in `mobile/`) |
 
-### White-labeling the app per school
-The login screen shows a school name from the env var `EXPO_PUBLIC_SCHOOL_NAME`
-(fallback: a generic subtitle). Set it in `mobile/.env` per deployment:
-```bash
-echo "EXPO_PUBLIC_SCHOOL_NAME=Your School Name" >> mobile/.env
-```
+### White-labeling
+The app contains **no school-specific branding** — it is fully generic by design.
+Same build works for any school; the only per-deployment difference is the roster of user accounts
+created in Supabase.

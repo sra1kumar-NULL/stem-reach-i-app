@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getMe } from '@/api/client';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Accents } from '@/constants/theme';
+import { Accents, Nord } from '@/constants/theme';
 import { useAuth } from '@/state/auth';
 
 export default function SummaryScreen() {
@@ -86,11 +86,11 @@ const styles = StyleSheet.create({
   title: { textAlign: 'center', fontSize: 32, lineHeight: 38 },
   cardWrap: { alignItems: 'center', padding: 32, borderRadius: 24, gap: 8, alignSelf: 'stretch' },
   score: { fontSize: 64, fontWeight: '800' },
-  scoreTotal: { color: '#666', fontSize: 40, fontWeight: '700' },
+  scoreTotal: { color: Nord.nord3, fontSize: 40, fontWeight: '700' },
   streak: { marginTop: 12, fontSize: 20, fontWeight: '700' },
   note: { textAlign: 'center' },
   button: { backgroundColor: Accents.primary, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 32, alignSelf: 'stretch', alignItems: 'center' },
-  buttonLabel: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  signoutPill: { borderWidth: 1, borderColor: '#555', borderRadius: 999, paddingHorizontal: 18, paddingVertical: 8 },
-  signoutText: { color: '#888', fontWeight: '600' },
+  buttonLabel: { color: Nord.nord6, fontWeight: '700', fontSize: 16 },
+  signoutPill: { borderWidth: 1, borderColor: Accents.border, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 8 },
+  signoutText: { color: Nord.nord4, fontWeight: '600' },
 });

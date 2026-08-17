@@ -1,7 +1,8 @@
+import { Ionicons } from '@expo/vector-icons';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Animated, StyleSheet, Text } from 'react-native';
 
-import { Accents } from '@/constants/theme';
+import { Accents, Nord } from '@/constants/theme';
 
 export type ToastKind = 'success' | 'error' | 'info';
 
@@ -58,7 +59,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             },
           ]}
         >
-          <Text style={styles.emoji}>{toast.kind === 'success' ? '🎉' : toast.kind === 'error' ? '😅' : '💡'}</Text>
+          <Ionicons
+            name={toast.kind === 'success' ? 'checkmark-circle' : toast.kind === 'error' ? 'alert-circle' : 'information-circle'}
+            size={22}
+            color={toast.kind === 'success' ? Accents.success : toast.kind === 'error' ? Accents.danger : Accents.primary}
+          />
           <Text style={styles.text}>{toast.message}</Text>
         </Animated.View>
       )}
@@ -87,9 +92,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderWidth: 1,
   },
-  success: { backgroundColor: '#0e1a10', borderColor: Accents.success },
-  error: { backgroundColor: '#1c0e0e', borderColor: Accents.danger },
-  info: { backgroundColor: '#10141c', borderColor: Accents.primary },
-  emoji: { fontSize: 20 },
-  text: { color: '#fff', fontWeight: '600', fontSize: 14, flexShrink: 1 },
+  success: { backgroundColor: Nord.nord1, borderColor: Accents.success },
+  error: { backgroundColor: Nord.nord1, borderColor: Accents.danger },
+  info: { backgroundColor: Nord.nord1, borderColor: Accents.primary },
+  emoji: { fontSize: 20, display: 'none' },
+  text: { color: Nord.nord6, fontWeight: '600', fontSize: 14, flexShrink: 1 },
 });

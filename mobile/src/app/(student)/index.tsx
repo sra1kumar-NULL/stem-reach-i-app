@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Easing, FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
@@ -7,7 +8,7 @@ import { getFeedToday, getMe, submitAnswer } from '@/api/client';
 import { QuestionCard } from '@/components/question-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Accents } from '@/constants/theme';
+import { Accents, Nord } from '@/constants/theme';
 import { useAuth } from '@/state/auth';
 import type { FeedResponse, SubmissionResponse } from '@stemreach/core';
 
@@ -27,7 +28,7 @@ export default function FeedScreen() {
     setLoading(true);
     setError(null);
     Promise.all([getFeedToday(), getMe()])
-      .then(([f, me]) => {
+      .then(([f, me]) =>  {
         setFeed(f);
         setStreak(me.streak.current);
       })
@@ -35,10 +36,11 @@ export default function FeedScreen() {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(load, [load]);
 
   const shownAnswered = (feed?.progress.answered ?? 0) + stats.attempted;
   const progressPct = feed && feed.progress.total > 0 ? shownAnswered / feed.progress.total : 0;
+
+  useEffect(load, [load]);
 
   useEffect(() => {
     Animated.timing(barWidth, {
@@ -79,6 +81,21 @@ export default function FeedScreen() {
     [feed],
   );
 
+  const completed = feed != null && (feed.progress.completed === true || done);
+
+  useEffect(() => {
+    if (!completed) return;
+    router.replace({
+      pathname: '/(student)/summary',
+      params: {
+        correct: String(stats.correct),
+        attempted: String(stats.attempted || feed?.progress.answered || 0),
+        streak: String(streak),
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [completed]);
+
   if (loading) {
     return (
       <ThemedView style={styles.center}>
@@ -105,51 +122,42 @@ export default function FeedScreen() {
           No revision yet today
         </ThemedText>
         <ThemedText themeColor="textSecondary" style={styles.emptyText}>
-          Your teacher hasn't activated today's topics yet. Check back after class!
+          Your teacher hasn't activated today's topics yet. Check back later!
         </ThemedText>
         <ThemedText themeColor="textSecondary">Current streak: {streak} 🔥</ThemedText>
         <Pressable style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]} onPress={load}>
           <Text style={styles.retryLabel}>Refresh</Text>
         </Pressable>
         <Pressable onPress={() => signOut()} style={({ pressed }) => [styles.signoutPill, pressed && { opacity: 0.6 }]}>
-          <Text style={styles.signoutPillText}>⏻ Sign out</Text>
+          <Ionicons name="log-out-outline" size={14} color={Nord.nord4} />
+          <Text style={styles.signoutPillText}>Sign out</Text>
         </Pressable>
       </ThemedView>
     );
   }
-
-  const completed = feed?.progress.completed === true || done;
-
-  useEffect(() => {
-    if (completed) {
-      router.replace({
-        pathname: '/(student)/summary',
-        params: {
-          correct: String(stats.correct),
-          attempted: String(stats.attempted || feed?.progress.answered || 0),
-          streak: String(streak),
-        },
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [completed]);
 
   return (
     <ThemedView style={styles.container}>
       <View style={[styles.header, { top: height > 700 ? 48 : 24 }]} pointerEvents="box-none">
         <ThemedView style={styles.progressCard}>
           <View style={styles.progressRow}>
-            <ThemedText type="smallBold">
-              ⚡ {shownAnswered}/{feed.progress.total}
-            </ThemedText>
-            <ThemedText type="smallBold">🔥 {streak}</ThemedText>
+            <View style={styles.progressLabel}>
+              <Ionicons name="flash" size={14} color={Accents.primary} />
+              <ThemedText type="smallBold">
+                {shownAnswered}/{feed.progress.total}
+              </ThemedText>
+            </View>
+            <View style={styles.progressLabel}>
+              <Ionicons name="flame" size={14} color={Accents.warn} />
+              <ThemedText type="smallBold">{streak}</ThemedText>
+            </View>
           </View>
           <View style={styles.barTrack}>
             <Animated.View style={[styles.barFill, { width: barWidth }]} />
           </View>
         </ThemedView>
         <Pressable onPress={() => signOut()} style={({ pressed }) => [styles.signoutBtn, pressed && { opacity: 0.6 }]}>
-          <Text style={styles.signoutBtnText}>⏻</Text>
+          <Ionicons name="log-out-outline" size={18} color={Nord.nord4} />
         </Pressable>
       </View>
 
@@ -200,23 +208,23 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   progressRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  barTrack: { height: 8, borderRadius: 4, backgroundColor: '#333', overflow: 'hidden' },
+  progressLabel: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  barTrack: { height: 8, borderRadius: 4, backgroundColor: Accents.track, overflow: 'hidden' },
   barFill: { height: 8, borderRadius: 4, backgroundColor: Accents.primary },
   signoutBtn: {
     width: 42,
     height: 42,
     borderRadius: 21,
     borderWidth: 1,
-    borderColor: '#555',
+    borderColor: Accents.border,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.25)',
+    backgroundColor: 'rgba(46, 52, 64, 0.35)',
   },
-  signoutBtnText: { fontSize: 18 },
-  signoutPill: { borderWidth: 1, borderColor: '#555', borderRadius: 999, paddingHorizontal: 18, paddingVertical: 8 },
-  signoutPillText: { color: '#888', fontWeight: '600' },
+  signoutPill: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: Accents.border, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 8 },
+  signoutPillText: { color: Nord.nord4, fontWeight: '600' },
   emptyTitle: { textAlign: 'center' },
   emptyText: { textAlign: 'center' },
-  retryBtn: { backgroundColor: '#3c87f7', borderRadius: 12, paddingVertical: 12, paddingHorizontal: 24 },
-  retryLabel: { color: '#fff', fontWeight: '700' },
+  retryBtn: { backgroundColor: Accents.primary, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 24 },
+  retryLabel: { color: Nord.nord6, fontWeight: '700' },
 });
