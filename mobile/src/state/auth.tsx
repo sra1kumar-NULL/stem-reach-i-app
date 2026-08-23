@@ -48,13 +48,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  const token = session?.access_token;
+
   useEffect(() => {
-    if (!session) return;
-    setAccessToken(session.access_token);
+    if (!token) return;
+    setAccessToken(token);
     getMe()
       .then(setMe)
       .catch(() => setMe(null));
-  }, [session?.access_token]);
+  }, [token]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
