@@ -1,3 +1,4 @@
+// mobile/src/app/login.tsx
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -61,7 +62,7 @@ export default function LoginScreen() {
     setError(null);
     try {
       await signIn(email.trim(), password);
-      router.replace('/');
+      router.replace('/'); // Ensure this navigates to the home screen
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Sign in failed');
     } finally {
