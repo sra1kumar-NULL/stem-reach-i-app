@@ -1,7 +1,7 @@
 // mobile/src/app/login.tsx
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, KeyboardAvoidingView, Platform, Pressable, type DimensionValue } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -52,6 +52,8 @@ export default function LoginScreen() {
     bounce.setValue(0);
     Animated.spring(bounce, { toValue: 1, useNativeDriver: true, friction: 4, tension: 90 }).start();
   }, [bounced, bounce]);
+
+  const router = useRouter();
 
   const submit = async () => {
     if (!email.trim() || !password) {
