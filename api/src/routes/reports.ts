@@ -1,12 +1,14 @@
 import { Hono } from "hono";
-import { and, eq, sql, type SQL } from "drizzle-orm";
-import { dailySetSections, dailySets, profiles, questions, sections, submissions } from "@stemreach/core/db/schema";
+import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { dailySetSections, dailySets, profiles, questions, reviewStates, sections, submissions } from "@stemreach/core/db/schema";
 import { requireRole } from "../lib/auth.js";
 import type { AppContext } from "../lib/http.js";
 import { badRequest } from "../lib/http.js";
 import type { ParticipationReport, PerformanceReport } from "@stemreach/core";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DAILY_PER_SECTION = 5;
 
 export function routes(ctx: AppContext): Hono {
   const app = new Hono();
@@ -44,7 +46,17 @@ export function routes(ctx: AppContext): Hono {
       .select({ sectionId: dailySetSections.sectionId })
       .from(dailySetSections)
       .where(eq(dailySetSections.dailySetId, set.id));
-    const target = 5 * activated.length;
+    const activatedIds = activated.map((a) => a.sectionId);
+
+    // Day's target per section is min(5, enabled questions) — must match the feed.
+    const enabledCounts = activatedIds.length
+      ? await ctx.db
+          .select({ sectionId: questions.sectionId, count: sql<number>`count(*)::int` })
+          .from(questions)
+          .where(and(eq(questions.enabled, true), inArray(questions.sectionId, activatedIds)))
+          .groupBy(questions.sectionId)
+      : [];
+    const target = enabledCounts.reduce((sum, r) => sum + Math.min(r.count, DAILY_PER_SECTION), 0);
 
     const done: ParticipationReport["done"] = [];
     const pending: ParticipationReport["pending"] = [];
@@ -70,6 +82,7 @@ export function routes(ctx: AppContext): Hono {
     const to = c.req.query("to");
     if (from && !DATE_RE.test(from)) throw badRequest("from must be YYYY-MM-DD");
     if (to && !DATE_RE.test(to)) throw badRequest("to must be YYYY-MM-DD");
+    if (sectionId && !UUID_RE.test(sectionId)) throw badRequest("section_id must be a UUID");
 
     const conds: SQL[] = [];
     if (from) conds.push(sql`${submissions.answeredAt} >= ${from}::date`);
@@ -115,9 +128,33 @@ export function routes(ctx: AppContext): Hono {
     const body: PerformanceReport = {
       per_section: rows.map((r) => ({ section_id: r.sectionId, section_no: r.sectionNo, name: r.name, attempts: r.attempts, accuracy: Number(r.accuracy) })),
       per_student: studentRows.map((r) => ({ id: r.id, name: r.name, avg_accuracy: Number(r.avgAccuracy), questions_answered: r.questionsAnswered })),
+      srs: await srsStats(ctx, today()),
     };
     return c.json(body);
   });
 
   return app;
+}
+
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** Class-wide spaced-repetition health (all students combined). */
+async function srsStats(ctx: AppContext, today: string) {
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const [row] = await ctx.db
+    .select({
+      dueToday: sql<number>`count(*) filter (where ${reviewStates.dueDate} <= ${today})::int`,
+      dueTomorrow: sql<number>`count(*) filter (where ${reviewStates.dueDate} = ${tomorrow})::int`,
+      learned: sql<number>`count(*) filter (where ${reviewStates.repetitions} >= 2 and ${reviewStates.intervalDays} > 0)::int`,
+      reviewed: sql<number>`count(*)::int`,
+    })
+    .from(reviewStates);
+  return {
+    due_today: row?.dueToday ?? 0,
+    due_tomorrow: row?.dueTomorrow ?? 0,
+    learned: row?.learned ?? 0,
+    reviewed: row?.reviewed ?? 0,
+  };
 }

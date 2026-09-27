@@ -2,7 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Animated, StyleSheet, Text } from 'react-native';
 
-import { Accents, Nord } from '@/constants/theme';
+import { Accents } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 
 export type ToastKind = 'success' | 'error' | 'info';
 
@@ -13,6 +14,7 @@ interface ToastContextValue {
 const ToastContext = createContext<ToastContextValue | null>(null);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
+  const theme = useTheme();
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
   const anim = useRef(new Animated.Value(0)).current;
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -42,11 +44,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      {toast && (
+{toast && (
         <Animated.View
-          pointerEvents="none"
           style={[
             styles.toast,
+            styles.noPointer,
+            { backgroundColor: theme.backgroundElement },
             toast.kind === 'success' && styles.success,
             toast.kind === 'error' && styles.error,
             toast.kind === 'info' && styles.info,
@@ -64,7 +67,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             size={22}
             color={toast.kind === 'success' ? Accents.success : toast.kind === 'error' ? Accents.danger : Accents.primary}
           />
-          <Text style={styles.text}>{toast.message}</Text>
+          <Text style={[styles.text, { color: theme.text }]}>{toast.message}</Text>
         </Animated.View>
       )}
     </ToastContext.Provider>
@@ -92,9 +95,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderWidth: 1,
   },
-  success: { backgroundColor: Nord.nord1, borderColor: Accents.success },
-  error: { backgroundColor: Nord.nord1, borderColor: Accents.danger },
-  info: { backgroundColor: Nord.nord1, borderColor: Accents.primary },
+  success: { borderColor: Accents.success },
+  error: { borderColor: Accents.danger },
+  info: { borderColor: Accents.primary },
   emoji: { fontSize: 20, display: 'none' },
-  text: { color: Nord.nord6, fontWeight: '600', fontSize: 14, flexShrink: 1 },
+  text: { fontWeight: '600', fontSize: 14, flexShrink: 1 },
+  noPointer: { pointerEvents: 'none' },
 });

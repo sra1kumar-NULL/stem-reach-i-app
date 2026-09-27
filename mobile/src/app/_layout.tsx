@@ -1,15 +1,19 @@
 import { useFonts as useFredoka, Fredoka_500Medium, Fredoka_600SemiBold, Fredoka_700Bold } from '@expo-google-fonts/fredoka';
 import { useFonts as useNunito, Nunito_400Regular, Nunito_600SemiBold, Nunito_700Bold } from '@expo-google-fonts/nunito';
-import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
-import { Stack } from 'expo-router';
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { useColorScheme } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaListener } from 'react-native-safe-area-context';
+import { Uniwind } from 'uniwind';
 
 import { AuthProvider } from '@/state/auth';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { ToastProvider } from '@/components/toast';
+import { GluestackUIProvider } from '@/components/ui/gluestack-ui-provider';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  const mode = colorScheme === 'dark' ? 'dark' : 'light';
   const [fredokaLoaded] = useFredoka({
     Fredoka_500Medium,
     Fredoka_600SemiBold,
@@ -26,20 +30,30 @@ export default function RootLayout() {
   }
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <ErrorBoundary>
-        <AuthProvider>
-          <ToastProvider>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="index" />
-          <Stack.Screen name="login" />
-          <Stack.Screen name="signup" />
-          <Stack.Screen name="(student)" />
-          <Stack.Screen name="(teacher)" />
-        </Stack>
-        </ToastProvider>
-        </AuthProvider>
-      </ErrorBoundary>
-    </ThemeProvider>
+    <SafeAreaListener
+      onChange={({ insets }) => {
+        Uniwind.updateInsets(insets);
+      }}
+    >
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <GluestackUIProvider mode={mode}>
+          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+            <ErrorBoundary>
+              <AuthProvider>
+                <ToastProvider>
+                  <Stack screenOptions={{ headerShown: false }}>
+                    <Stack.Screen name="index" />
+                    <Stack.Screen name="login" />
+                    <Stack.Screen name="signup" />
+                    <Stack.Screen name="(student)" />
+                    <Stack.Screen name="(teacher)" />
+                  </Stack>
+                </ToastProvider>
+              </AuthProvider>
+            </ErrorBoundary>
+          </ThemeProvider>
+        </GluestackUIProvider>
+      </GestureHandlerRootView>
+    </SafeAreaListener>
   );
 }

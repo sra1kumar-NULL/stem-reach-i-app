@@ -1,13 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Link, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getParticipation } from '@/api/client';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Accents, Nord } from '@/constants/theme';
+import { Avatar, AvatarFallbackText } from '@/components/ui/avatar';
+import { Box } from '@/components/ui/box';
+import { Heading } from '@/components/ui/heading';
+import { Text as UIText } from '@/components/ui/text';
+import { Accents, Nord, Type } from '@/constants/theme';
 import type { ParticipationReport } from '@stemreach/core';
 
 const AVATAR_COLORS = [Nord.nord15, Nord.nord7, Nord.nord12, Nord.nord10, Nord.nord13, Nord.nord11];
@@ -34,17 +36,25 @@ export default function ParticipationScreen() {
   const [report, setReport] = useState<ParticipationReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useFocusEffect(
-    useCallback(() => {
-      setLoading(true);
+  const load = useCallback(
+    (refreshing = false) => {
+      if (refreshing) setRefreshing(true);
+      else setLoading(true);
       setError(null);
       getParticipation(date)
         .then(setReport)
         .catch((e) => setError(e instanceof Error ? e.message : 'failed'))
-        .finally(() => setLoading(false));
-    }, [date]),
+        .finally(() => {
+          setLoading(false);
+          setRefreshing(false);
+        });
+    },
+    [date],
   );
+
+  useFocusEffect(useCallback(() => load(), [load]));
 
   const rows: Row[] = [
     ...(report?.done ?? []).map((s) => ({ id: s.id, name: s.name, done: true, completed: s.completed, answered: s.answered })),
@@ -54,96 +64,88 @@ export default function ParticipationScreen() {
   const completedCount = report?.done.filter((s) => s.completed).length ?? 0;
 
   return (
-    <ThemedView style={styles.container}>
+    <Box className="flex-1">
       <SafeAreaView style={styles.safe}>
-        <ThemedView style={styles.headerRow}>
+        <View style={styles.headerRow}>
           <Link href="/(teacher)" style={styles.back}>
             <Ionicons name="chevron-back" size={22} color={Accents.primary} />
-            <ThemedText style={styles.backText}>Back</ThemedText>
+            <UIText className="text-primary text-xl" style={Type.bodyBold}>
+              Back
+            </UIText>
           </Link>
-          <ThemedText type="title" style={styles.header}>
+          <Heading className="text-2xl" style={Type.heading}>
             Participation
-          </ThemedText>
-        </ThemedView>
+          </Heading>
+        </View>
 
         {loading ? (
-          <ActivityIndicator size="large" style={{ marginTop: 40 }} />
+          <ActivityIndicator size="large" color={Accents.primary} style={{ marginTop: 40 }} />
         ) : error ? (
-          <ThemedText themeColor="textSecondary" style={{ marginTop: 24 }}>
-            {error}
-          </ThemedText>
+          <Box className="items-center gap-3 p-6">
+            <UIText className="text-muted-foreground text-center" style={Type.body}>
+              {error}
+            </UIText>
+          </Box>
         ) : (
           <FlatList
             data={rows}
             keyExtractor={(r) => r.id}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Accents.primary} />}
             renderItem={({ item, index }) => (
-              <ThemedView type="backgroundElement" style={[styles.row, !item.done && styles.rowPending]}>
-                <View style={[styles.avatar, { backgroundColor: AVATAR_COLORS[index % AVATAR_COLORS.length] }]}>
-                  <Text style={styles.avatarText}>{initials(item.name)}</Text>
-                </View>
-                <ThemedView style={styles.rowBody}>
-                  <ThemedText>{item.name}</ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">
+              <Box className={`bg-card flex-row items-center gap-3 rounded-2xl p-3 ${!item.done ? 'opacity-70' : ''}`}>
+                <Avatar className="rounded-full" style={[styles.avatar, { backgroundColor: AVATAR_COLORS[index % AVATAR_COLORS.length] }]}>
+                  <AvatarFallbackText className="font-extrabold" style={styles.avatarText}>
+                    {initials(item.name)}
+                  </AvatarFallbackText>
+                </Avatar>
+                <Box className="flex-1 gap-0.5">
+                  <UIText className="text-foreground" style={Type.bodySemi}>
+                    {item.name}
+                  </UIText>
+                  <UIText className="text-xs text-muted-foreground" style={Type.body}>
                     {item.done ? `${item.answered} answers` : 'not started yet'}
-                  </ThemedText>
-                </ThemedView>
-                <View style={[styles.statusChip, { backgroundColor: !item.done ? Nord.nord2 : item.completed ? Accents.success : Accents.warn }]}>
+                  </UIText>
+                </Box>
+                <View
+                  style={[styles.statusChip, { backgroundColor: !item.done ? Nord.nord2 : item.completed ? Accents.success : Accents.warn }]}
+                >
                   <Ionicons name={!item.done ? 'time-outline' : item.completed ? 'checkmark-circle' : 'play-circle'} size={12} color={Nord.nord6} />
                   <Text style={styles.statusText}>{!item.done ? 'pending' : item.completed ? 'done' : 'in progress'}</Text>
                 </View>
-              </ThemedView>
+              </Box>
             )}
             ListHeaderComponent={
               <View style={styles.statsRow}>
-                <ThemedView type="backgroundElement" style={styles.statChip}>
-                  <Text style={styles.statValue}>{completedCount}/{report?.total_students ?? 0}</Text>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    completed
-                  </ThemedText>
-                </ThemedView>
-                <ThemedView type="backgroundElement" style={styles.statChip}>
-                  <Text style={styles.statValue}>{report?.done.length ?? 0}</Text>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    started
-                  </ThemedText>
-                </ThemedView>
-                <ThemedView type="backgroundElement" style={styles.statChip}>
-                  <Text style={styles.statValue}>{report?.pending.length ?? 0}</Text>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    pending
-                  </ThemedText>
-                </ThemedView>
+                {[
+                  { value: `${completedCount}/${report?.total_students ?? 0}`, label: 'completed' },
+                  { value: String(report?.done.length ?? 0), label: 'started' },
+                  { value: String(report?.pending.length ?? 0), label: 'pending' },
+                ].map((chip) => (
+                  <Box key={chip.label} className="bg-card flex-1 items-center rounded-2xl py-3 gap-0.5">
+                    <Text style={styles.statValue}>{chip.value}</Text>
+                    <UIText className="text-xs text-muted-foreground" style={Type.body}>
+                      {chip.label}
+                    </UIText>
+                  </Box>
+                ))}
               </View>
             }
             contentContainerStyle={{ paddingBottom: 40, gap: 8 }}
           />
         )}
       </SafeAreaView>
-    </ThemedView>
+    </Box>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
   safe: { flex: 1, padding: 16, gap: 8 },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   back: { paddingVertical: 4 },
-  backText: { color: Accents.primary, fontSize: 20 },
-  header: { fontSize: 28 },
   statsRow: { flexDirection: 'row', gap: 10, marginVertical: 12 },
-  statChip: { flex: 1, alignItems: 'center', borderRadius: 14, paddingVertical: 12, gap: 2 },
-  statValue: { fontSize: 22, fontWeight: '800', color: Nord.nord6 },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    borderRadius: 14,
-    padding: 12,
-  },
-  rowPending: { opacity: 0.7 },
-  avatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: Nord.nord6, fontWeight: '800', fontSize: 15 },
-  rowBody: { flex: 1, gap: 2 },
+  statValue: { fontSize: 22, fontWeight: '800', color: Accents.primary },
+  avatar: {},
+  avatarText: { color: Nord.nord6, fontSize: 15 },
   statusChip: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
   statusText: { color: Nord.nord6, fontWeight: '800', fontSize: 12 },
 });

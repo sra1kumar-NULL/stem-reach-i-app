@@ -52,14 +52,18 @@ export const questions = pgTable(
   (t) => [uniqueIndex("questions_section_text_unique").on(t.sectionId, t.questionText), index("idx_questions_section").on(t.sectionId)],
 );
 
-export const dailySets = pgTable("daily_sets", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  setDate: date("set_date").notNull().defaultNow(),
-  activatedBy: uuid("activated_by")
-    .notNull()
-    .references(() => profiles.id),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const dailySets = pgTable(
+  "daily_sets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    setDate: date("set_date").notNull().defaultNow(),
+    activatedBy: uuid("activated_by")
+      .notNull()
+      .references(() => profiles.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("daily_sets_set_date_unique").on(t.setDate)],
+);
 
 export const dailySetSections = pgTable(
   "daily_set_sections",
@@ -105,3 +109,29 @@ export const streaks = pgTable("streaks", {
   lastActiveDate: date("last_activity_date"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * Spaced-repetition state per (student, flashcard). Ease is stored as an
+ * integer scaled ×100 (250 = 2.50) to avoid float drift in the DB.
+ */
+export const reviewStates = pgTable(
+  "review_states",
+  {
+    studentId: uuid("student_id")
+      .notNull()
+      .references(() => profiles.id),
+    questionId: uuid("question_id")
+      .notNull()
+      .references(() => questions.id),
+    ease: integer("ease").notNull().default(250),
+    intervalDays: integer("interval_days").notNull().default(0),
+    repetitions: integer("repetitions").notNull().default(0),
+    dueDate: date("due_date").notNull(),
+    lastReviewedAt: timestamp("last_reviewed_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.studentId, t.questionId] }),
+    index("idx_review_states_due").on(t.dueDate),
+  ],
+);

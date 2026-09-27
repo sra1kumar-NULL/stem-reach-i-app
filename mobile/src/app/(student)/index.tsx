@@ -2,15 +2,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Easing, FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getFeedToday, getMe, submitAnswer } from '@/api/client';
 import { QuestionCard } from '@/components/question-card';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Accents, Nord } from '@/constants/theme';
+import { Box } from '@/components/ui/box';
+import { Button, ButtonText } from '@/components/ui/button';
+import { Heading } from '@/components/ui/heading';
+import { Text as UIText } from '@/components/ui/text';
+import { Accents, Nord, Type } from '@/constants/theme';
 import { useAuth } from '@/state/auth';
-import type { FeedResponse, SubmissionResponse } from '@stemreach/core';
+import type { FeedResponse, SelfEval } from '@stemreach/core';
 
 export default function FeedScreen() {
   const { height } = useWindowDimensions();
@@ -36,7 +37,6 @@ export default function FeedScreen() {
       .finally(() => setLoading(false));
   }, []);
 
-
   const shownAnswered = (feed?.progress.answered ?? 0) + stats.attempted;
   const progressPct = feed && feed.progress.total > 0 ? shownAnswered / feed.progress.total : 0;
 
@@ -55,11 +55,11 @@ export default function FeedScreen() {
     feed?.sections.find((s) => s.id === sectionId)?.name ?? 'Revision';
 
   const handleSubmit = useCallback(
-    async (questionId: string, body: { selected_option?: number; self_eval?: 'got_it' | 'need_practice' }) => {
+    async (questionId: string, body: { selected_option?: number; self_eval?: SelfEval }) => {
       if (!feed?.set) throw new Error('no active set');
       return submitAnswer({ question_id: questionId, daily_set_id: feed.set.id, ...body });
     },
-    [feed?.set],
+    [feed],
   );
 
   const handleAnswered = useCallback(
@@ -98,64 +98,76 @@ export default function FeedScreen() {
 
   if (loading) {
     return (
-      <ThemedView style={styles.center}>
-        <ActivityIndicator size="large" />
-      </ThemedView>
+      <Box className="flex-1 items-center justify-center">
+        <ActivityIndicator size="large" color={Accents.primary} />
+      </Box>
     );
   }
 
   if (error) {
     return (
-      <ThemedView style={styles.center}>
-        <ThemedText themeColor="textSecondary">{error}</ThemedText>
-        <Pressable style={styles.retryBtn} onPress={load}>
-          <Text style={styles.retryLabel}>Retry</Text>
-        </Pressable>
-      </ThemedView>
+      <Box className="flex-1 items-center justify-center p-8 gap-4">
+        <UIText className="text-muted-foreground text-center" style={Type.body}>
+          {error}
+        </UIText>
+        <Button variant="default" className="rounded-xl" onPress={load}>
+          <ButtonText style={Type.bodyBold}>Retry</ButtonText>
+        </Button>
+      </Box>
     );
   }
 
   if (!feed || feed.empty) {
     return (
-      <ThemedView style={styles.center}>
-        <ThemedText type="title" style={styles.emptyTitle}>
+      <Box className="flex-1 items-center justify-center p-8 gap-4">
+        <Text style={{ fontSize: 56 }}>📭</Text>
+        <Heading className="text-center text-2xl" style={Type.heading}>
           No revision yet today
-        </ThemedText>
-        <ThemedText themeColor="textSecondary" style={styles.emptyText}>
-          Your teacher hasn't activated today's topics yet. Check back later!
-        </ThemedText>
-        <ThemedText themeColor="textSecondary">Current streak: {streak} 🔥</ThemedText>
-        <Pressable style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.8 }]} onPress={load}>
-          <Text style={styles.retryLabel}>Refresh</Text>
-        </Pressable>
-        <Pressable onPress={() => signOut()} style={({ pressed }) => [styles.signoutPill, pressed && { opacity: 0.6 }]}>
+        </Heading>
+        <UIText className="text-muted-foreground text-center" style={Type.body}>
+          Your teacher hasn&apos;t activated today&apos;s topics yet. Check back later!
+        </UIText>
+        <UIText className="text-muted-foreground" style={Type.bodySemi}>
+          Current streak: {streak} 🔥
+        </UIText>
+        <Button variant="default" className="rounded-xl" onPress={load}>
+          <ButtonText style={Type.bodyBold}>Refresh</ButtonText>
+        </Button>
+        <Pressable
+          onPress={() => signOut()}
+          style={({ pressed }) => [styles.signoutPill, pressed && { opacity: 0.6 }]}
+        >
           <Ionicons name="log-out-outline" size={14} color={Nord.nord4} />
-          <Text style={styles.signoutPillText}>Sign out</Text>
+          <UIText className="text-muted-foreground font-semibold" style={Type.bodySemi}>
+            Sign out
+          </UIText>
         </Pressable>
-      </ThemedView>
+      </Box>
     );
   }
 
   return (
-    <ThemedView style={styles.container}>
-      <View style={[styles.header, { top: height > 700 ? 48 : 24 }]} pointerEvents="box-none">
-        <ThemedView style={styles.progressCard}>
+    <Box className="flex-1">
+      <View style={[styles.header, styles.headerNoPointer, { top: height > 700 ? 48 : 24 }]}>
+        <Box className="flex-1 bg-card rounded-2xl px-3.5 py-2.5 gap-2">
           <View style={styles.progressRow}>
             <View style={styles.progressLabel}>
               <Ionicons name="flash" size={14} color={Accents.primary} />
-              <ThemedText type="smallBold">
+              <UIText className="text-sm font-bold text-foreground" style={Type.bodyBold}>
                 {shownAnswered}/{feed.progress.total}
-              </ThemedText>
+              </UIText>
             </View>
             <View style={styles.progressLabel}>
               <Ionicons name="flame" size={14} color={Accents.warn} />
-              <ThemedText type="smallBold">{streak}</ThemedText>
+              <UIText className="text-sm font-bold text-foreground" style={Type.bodyBold}>
+                {streak}
+              </UIText>
             </View>
           </View>
           <View style={styles.barTrack}>
             <Animated.View style={[styles.barFill, { width: barWidth }]} />
           </View>
-        </ThemedView>
+        </Box>
         <Pressable onPress={() => signOut()} style={({ pressed }) => [styles.signoutBtn, pressed && { opacity: 0.6 }]}>
           <Ionicons name="log-out-outline" size={18} color={Nord.nord4} />
         </Pressable>
@@ -184,13 +196,11 @@ export default function FeedScreen() {
         initialNumToRender={2}
         windowSize={3}
       />
-    </ThemedView>
+    </Box>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 16 },
   header: {
     position: 'absolute',
     left: 16,
@@ -200,13 +210,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
-  progressCard: {
-    flex: 1,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    gap: 8,
-  },
+  headerNoPointer: { pointerEvents: 'box-none' },
   progressRow: { flexDirection: 'row', justifyContent: 'space-between' },
   progressLabel: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   barTrack: { height: 8, borderRadius: 4, backgroundColor: Accents.track, overflow: 'hidden' },
@@ -222,9 +226,4 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(46, 52, 64, 0.35)',
   },
   signoutPill: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: Accents.border, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 8 },
-  signoutPillText: { color: Nord.nord4, fontWeight: '600' },
-  emptyTitle: { textAlign: 'center' },
-  emptyText: { textAlign: 'center' },
-  retryBtn: { backgroundColor: Accents.primary, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 24 },
-  retryLabel: { color: Nord.nord6, fontWeight: '700' },
 });

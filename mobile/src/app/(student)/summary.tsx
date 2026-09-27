@@ -1,22 +1,32 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, StyleSheet, Text } from 'react-native';
+import { Animated, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getMe } from '@/api/client';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Accents, Nord } from '@/constants/theme';
+import { Box } from '@/components/ui/box';
+import { Button, ButtonText } from '@/components/ui/button';
+import { Heading } from '@/components/ui/heading';
+import { Text as UIText } from '@/components/ui/text';
+import { Accents, Type } from '@/constants/theme';
 import { useAuth } from '@/state/auth';
+import type { MeResponse } from '@stemreach/core';
 
 export default function SummaryScreen() {
   const { correct = '0', attempted = '0', streak = '0' } = useLocalSearchParams<{ correct: string; attempted: string; streak: string }>();
   const { signOut } = useAuth();
-  const [lifetime, setLifetime] = useState<{ answered: number; accuracy: number } | null>(null);
+  const [me, setMe] = useState<MeResponse | null>(null);
   const pop = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    getMe().then(setMe).catch(() => undefined);
+  }, []);
 
   const a = Number(attempted);
   const c = Number(correct);
+  const hasSession = a > 0;
+  const pct = hasSession ? Math.round((c / a) * 100) : 0;
+  const hero = hasSession ? (pct >= 80 ? '🏆' : pct >= 50 ? '🎉' : '💪') : '🎊';
 
   useEffect(() => {
     Animated.sequence([
@@ -25,72 +35,73 @@ export default function SummaryScreen() {
     ]).start();
   }, [pop]);
 
-  useEffect(() => {
-    if (a > 0) return;
-    getMe()
-      .then((me) => setLifetime({ answered: me.totals.questions_answered, accuracy: me.totals.accuracy }))
-      .catch(() => undefined);
-  }, [a]);
-
-  const shownCorrect = a > 0 ? c : lifetime ? Math.round(lifetime.answered * lifetime.accuracy) : 0;
-  const shownAttempted = a > 0 ? a : lifetime?.answered ?? 0;
-  const pct = shownAttempted > 0 ? Math.round((shownCorrect / shownAttempted) * 100) : 0;
-  const hero = pct >= 80 ? '🏆' : pct >= 50 ? '🎉' : '💪';
-
   return (
-    <ThemedView style={styles.container}>
+    <Box className="flex-1">
       <SafeAreaView style={styles.safe}>
         <Animated.Text style={[styles.hero, { transform: [{ scale: pop.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] }) }, { rotate: pop.interpolate({ inputRange: [0, 1], outputRange: ['-12deg', '0deg'] }) }] }]}>
           {hero}
         </Animated.Text>
 
-        <ThemedText type="title" style={styles.title}>
+        <Heading className="text-center text-3xl" style={Type.heading}>
           Daily Revision Complete!
-        </ThemedText>
+        </Heading>
 
-        <ThemedView type="backgroundElement" style={styles.cardWrap}>
+        <Box className="bg-card items-center p-8 rounded-3xl gap-2 self-stretch">
           <Animated.View
             style={{
               opacity: pop,
               transform: [{ translateY: pop.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }],
             }}
           >
-            <ThemedText style={styles.score}>
-              {shownCorrect}
-              <ThemedText style={styles.scoreTotal}>/{shownAttempted}</ThemedText>
-            </ThemedText>
-            <ThemedText themeColor="textSecondary">correct this session · {pct}%</ThemedText>
-            <ThemedText style={styles.streak}>Streak: {streak} 🔥</ThemedText>
+            {hasSession ? (
+              <>
+                <UIText className="text-6xl font-extrabold text-foreground" style={Type.headingBold}>
+                  {c}
+                  <UIText className="text-4xl font-bold text-muted-foreground" style={Type.heading}>
+                    /{a}
+                  </UIText>
+                </UIText>
+                <UIText className="text-muted-foreground text-center" style={Type.body}>
+                  correct this session · {pct}%
+                </UIText>
+              </>
+            ) : (
+              <UIText className="text-xl font-bold text-foreground text-center" style={Type.heading}>
+                You made it through today&apos;s set — every card counts. 🧠
+              </UIText>
+            )}
+            <UIText className="mt-3 text-xl font-bold text-foreground text-center" style={Type.heading}>
+              Streak: {streak} 🔥
+            </UIText>
+            {me != null && (me.srs.due_tomorrow > 0 || me.srs.due_today > 0) && (
+              <UIText className="mt-2 text-sm text-muted-foreground text-center" style={Type.body}>
+                {me.srs.due_today > 0
+                  ? `${me.srs.due_today} card(s) still waiting today${me.srs.due_tomorrow > 0 ? ` · ${me.srs.due_tomorrow} due tomorrow` : ''}`
+                  : `${me.srs.due_tomorrow} card(s) due tomorrow — smart review keeps them fresh 🧠`}
+              </UIText>
+            )}
           </Animated.View>
-        </ThemedView>
+        </Box>
 
-        <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
+        <UIText className="text-sm text-muted-foreground text-center" style={Type.body}>
           Come back tomorrow for a fresh set! 🌟
-        </ThemedText>
+        </UIText>
 
-        <Pressable style={({ pressed }) => [styles.button, pressed && { opacity: 0.85 }]} onPress={() => router.replace('/')}>
-          <Text style={styles.buttonLabel}>Back to home</Text>
-        </Pressable>
+        <Button variant="default" size="lg" className="rounded-2xl self-stretch" onPress={() => router.replace('/')}>
+          <ButtonText style={Type.bodyBold}>Back to home</ButtonText>
+        </Button>
         <Pressable onPress={() => signOut()} style={({ pressed }) => [styles.signoutPill, pressed && { opacity: 0.6 }]}>
-          <Text style={styles.signoutText}>⏻ Sign out</Text>
+          <UIText className="text-muted-foreground font-semibold" style={Type.bodySemi}>
+            ⏻ Sign out
+          </UIText>
         </Pressable>
       </SafeAreaView>
-    </ThemedView>
+    </Box>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
   safe: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 24 },
   hero: { fontSize: 72 },
-  title: { textAlign: 'center', fontSize: 32, lineHeight: 38 },
-  cardWrap: { alignItems: 'center', padding: 32, borderRadius: 24, gap: 8, alignSelf: 'stretch' },
-  score: { fontSize: 64, fontWeight: '800' },
-  scoreTotal: { color: Nord.nord3, fontSize: 40, fontWeight: '700' },
-  streak: { marginTop: 12, fontSize: 20, fontWeight: '700' },
-  note: { textAlign: 'center' },
-  button: { backgroundColor: Accents.primary, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 32, alignSelf: 'stretch', alignItems: 'center' },
-  buttonLabel: { color: Nord.nord6, fontWeight: '700', fontSize: 16 },
   signoutPill: { borderWidth: 1, borderColor: Accents.border, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 8 },
-  signoutText: { color: Nord.nord4, fontWeight: '600' },
 });

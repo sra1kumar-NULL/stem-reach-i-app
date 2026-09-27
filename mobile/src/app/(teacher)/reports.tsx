@@ -1,16 +1,36 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Link, useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getPerformance } from '@/api/client';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Accents, Nord } from '@/constants/theme';
+import { Avatar, AvatarFallbackText } from '@/components/ui/avatar';
+import { Box } from '@/components/ui/box';
+import { Heading } from '@/components/ui/heading';
+import { Text as UIText } from '@/components/ui/text';
+import { Accents, Nord, Type } from '@/constants/theme';
 import type { PerformanceReport } from '@stemreach/core';
 
 const BAR_MAX = 100;
+const AVATAR_COLORS = [Nord.nord15, Nord.nord7, Nord.nord12, Nord.nord10, Nord.nord13, Nord.nord11];
+
+type RangeKey = 'today' | '7d' | '30d';
+const RANGES: { key: RangeKey; label: string }[] = [
+  { key: 'today', label: 'Today' },
+  { key: '7d', label: '7 days' },
+  { key: '30d', label: '30 days' },
+];
+
+function rangeParams(key: RangeKey): { from?: string; to?: string } {
+  const now = new Date();
+  const to = now.toISOString().slice(0, 10);
+  if (key === 'today') return { from: to, to };
+  const days = key === '7d' ? 6 : 29;
+  const fromDate = new Date(now);
+  fromDate.setDate(now.getDate() - days);
+  return { from: fromDate.toISOString().slice(0, 10), to };
+}
 
 function accuracyColor(pct: number): string {
   if (pct >= 75) return Accents.success;
@@ -27,8 +47,6 @@ function initials(name: string): string {
     .join('');
 }
 
-const AVATAR_COLORS = [Nord.nord15, Nord.nord7, Nord.nord12, Nord.nord10, Nord.nord13, Nord.nord11];
-
 function AnimatedBar({ pct, color }: { pct: number; color: string }) {
   const width = useRef(new Animated.Value(0)).current;
   useFocusEffect(
@@ -43,32 +61,28 @@ function AnimatedBar({ pct, color }: { pct: number; color: string }) {
   );
 }
 
-function StatChip({ value, label }: { value: string; label: string }) {
-  return (
-    <ThemedView type="backgroundElement" style={styles.statChip}>
-      <Text style={styles.statValue}>{value}</Text>
-      <ThemedText type="small" themeColor="textSecondary">
-        {label}
-      </ThemedText>
-    </ThemedView>
-  );
-}
-
 export default function ReportsScreen() {
+  const [range, setRange] = useState<RangeKey>('today');
   const [report, setReport] = useState<PerformanceReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useFocusEffect(
-    useCallback(() => {
-      setLoading(true);
-      setError(null);
-      getPerformance()
-        .then(setReport)
-        .catch((e) => setError(e instanceof Error ? e.message : 'failed'))
-        .finally(() => setLoading(false));
-    }, []),
-  );
+  const load = useCallback((r: RangeKey, refreshing = false) => {
+    if (refreshing) setRefreshing(true);
+    else setLoading(true);
+    setError(null);
+    const { from, to } = rangeParams(r);
+    getPerformance(from, to)
+      .then(setReport)
+      .catch((e) => setError(e instanceof Error ? e.message : 'failed'))
+      .finally(() => {
+        setLoading(false);
+        setRefreshing(false);
+      });
+  }, []);
+
+  useFocusEffect(useCallback(() => load(range), [load, range]));
 
   const fmt = (n: number) => `${Math.round(n * 100)}%`;
   const students = [...(report?.per_student ?? [])].sort((a, b) => b.avg_accuracy - a.avg_accuracy);
@@ -76,116 +90,154 @@ export default function ReportsScreen() {
   const totalAnswers = students.reduce((n, s) => n + s.questions_answered, 0);
 
   return (
-    <ThemedView style={styles.container}>
+    <Box className="flex-1">
       <SafeAreaView style={styles.safe}>
-        <ThemedView style={styles.headerRow}>
+        <View style={styles.headerRow}>
           <Link href="/(teacher)" style={styles.back}>
             <Ionicons name="chevron-back" size={22} color={Accents.primary} />
-            <ThemedText style={styles.backText}>Back</ThemedText>
+            <UIText className="text-primary text-xl" style={Type.bodyBold}>
+              Back
+            </UIText>
           </Link>
-          <ThemedText type="title" style={styles.header}>
+          <Heading className="text-2xl" style={Type.heading}>
             Performance
-          </ThemedText>
-        </ThemedView>
+          </Heading>
+        </View>
+
+        <View style={styles.chipRow}>
+          {RANGES.map(({ key, label }) => {
+            const active = key === range;
+            return (
+              <Pressable
+                key={key}
+                onPress={() => setRange(key)}
+                style={({ pressed }) => [styles.chip, active && styles.chipActive, pressed && { opacity: 0.7 }]}
+              >
+                <Text style={[styles.chipLabel, active && styles.chipLabelActive]}>{label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
 
         {loading ? (
-          <ActivityIndicator size="large" style={{ marginTop: 40 }} />
+          <ActivityIndicator size="large" color={Accents.primary} style={{ marginTop: 40 }} />
         ) : error ? (
-          <ThemedText themeColor="textSecondary" style={{ marginTop: 24 }}>
-            {error}
-          </ThemedText>
+          <Box className="items-center gap-3 p-6">
+            <UIText className="text-muted-foreground text-center" style={Type.body}>
+              {error}
+            </UIText>
+          </Box>
         ) : (
           <FlatList
             data={report?.per_section ?? []}
             keyExtractor={(s) => s.section_id}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(range, true)} tintColor={Accents.primary} />}
             renderItem={({ item }) => {
               const pct = item.attempts > 0 ? item.accuracy * 100 : 0;
               const color = item.attempts > 0 ? accuracyColor(pct) : Accents.border;
               return (
-                <ThemedView type="backgroundElement" style={styles.sectionRow}>
-                  <ThemedView style={styles.sectionHead}>
-                    <ThemedView style={styles.sectionTitleWrap}>
-                      <Text style={[styles.pctBadge, { backgroundColor: item.attempts > 0 ? color : Nord.nord2, color: Nord.nord6 }]}>
-                        {item.attempts > 0 ? fmt(item.accuracy) : '—'}
-                      </Text>
-                      <ThemedText type="smallBold" style={styles.sectionName}>
+                <Box className="bg-card rounded-2xl p-3.5 mt-2.5 gap-2.5">
+                  <View style={styles.sectionHead}>
+                    <View style={styles.sectionTitleWrap}>
+                      <View style={[styles.pctBadge, { backgroundColor: item.attempts > 0 ? color : Nord.nord2 }]}>
+                        <Text style={styles.pctBadgeText}>{item.attempts > 0 ? fmt(item.accuracy) : '—'}</Text>
+                      </View>
+                      <UIText className="text-sm font-bold text-foreground flex-1" style={Type.bodyBold}>
                         {item.section_no} — {item.name}
-                      </ThemedText>
-                    </ThemedView>
-                    <ThemedText type="small" themeColor="textSecondary">
+                      </UIText>
+                    </View>
+                    <UIText className="text-xs text-muted-foreground" style={Type.body}>
                       {item.attempts} attempts
-                    </ThemedText>
-                  </ThemedView>
+                    </UIText>
+                  </View>
                   <AnimatedBar pct={pct} color={color} />
-                </ThemedView>
+                </Box>
               );
             }}
             ListHeaderComponent={
-              <ThemedView style={styles.statsRow}>
-                <StatChip value={fmt(classAccuracy)} label="class accuracy" />
-                <StatChip value={String(totalAnswers)} label="answers" />
-                <StatChip value={String(students.length)} label="students" />
-              </ThemedView>
+              <View style={styles.statsRow}>
+                {[
+                  { value: fmt(classAccuracy), label: 'class accuracy' },
+                  { value: String(totalAnswers), label: 'answers' },
+                  { value: String(students.length), label: 'students' },
+                ].map((chip) => (
+                  <Box key={chip.label} className="bg-card flex-1 items-center rounded-2xl py-3 gap-0.5">
+                    <Text style={styles.statValue}>{chip.value}</Text>
+                    <UIText className="text-xs text-muted-foreground" style={Type.body}>
+                      {chip.label}
+                    </UIText>
+                  </Box>
+                ))}
+              </View>
             }
             ListFooterComponent={
-              <ThemedView style={styles.studentsHead}>
-                <ThemedText type="smallBold">Students</ThemedText>
+              <Box className="mt-5 gap-2">
+                <UIText className="text-base font-bold text-foreground" style={Type.bodyBold}>
+                  Students
+                </UIText>
                 {students.map((s, i) => {
                   const pct = s.avg_accuracy * 100;
                   return (
-                    <ThemedView key={s.id} type="backgroundElement" style={styles.studentRow}>
-                      <View style={[styles.avatar, { backgroundColor: AVATAR_COLORS[i % AVATAR_COLORS.length] }]}>
-                        <Text style={styles.avatarText}>{initials(s.name)}</Text>
-                      </View>
-                      <ThemedView style={styles.studentBody}>
-                        <ThemedText>{s.name}</ThemedText>
-                        <ThemedText type="small" themeColor="textSecondary">
+                    <Box key={s.id} className="bg-card flex-row items-center gap-3 rounded-2xl p-3">
+                      <Avatar className="rounded-full" style={[styles.avatar, { backgroundColor: AVATAR_COLORS[i % AVATAR_COLORS.length] }]}>
+                        <AvatarFallbackText className="font-extrabold" style={styles.avatarText}>
+                          {initials(s.name)}
+                        </AvatarFallbackText>
+                      </Avatar>
+                      <Box className="flex-1 gap-0.5">
+                        <UIText className="text-foreground" style={Type.bodySemi}>
+                          {s.name}
+                        </UIText>
+                        <UIText className="text-xs text-muted-foreground" style={Type.body}>
                           {s.questions_answered} answers · rank #{i + 1}
-                        </ThemedText>
-                      </ThemedView>
+                        </UIText>
+                      </Box>
                       <View style={[styles.accuracyChip, { backgroundColor: accuracyColor(pct) }]}>
                         <Text style={styles.accuracyChipText}>{fmt(s.avg_accuracy)}</Text>
                       </View>
-                    </ThemedView>
+                    </Box>
                   );
                 })}
                 {students.length === 0 && (
-                  <ThemedText type="small" themeColor="textSecondary" style={{ textAlign: 'center', padding: 16 }}>
-                    No answers yet today — ask students to start their revision! 🚀
-                  </ThemedText>
+                  <UIText className="text-sm text-muted-foreground text-center p-4" style={Type.body}>
+                    No answers in this range yet — ask students to start their revision! 🚀
+                  </UIText>
                 )}
-              </ThemedView>
+              </Box>
             }
             contentContainerStyle={{ paddingBottom: 40 }}
           />
         )}
       </SafeAreaView>
-    </ThemedView>
+    </Box>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
   safe: { flex: 1, padding: 16, gap: 8 },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   back: { paddingVertical: 4 },
-  backText: { color: Accents.primary, fontSize: 20 },
-  header: { fontSize: 28 },
+  chipRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  chip: {
+    borderWidth: 1,
+    borderColor: Accents.border,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  chipActive: { backgroundColor: Accents.primary, borderColor: Accents.primary },
+  chipLabel: { color: Accents.primary, fontWeight: '700', fontSize: 13 },
+  chipLabelActive: { color: Nord.nord6 },
   statsRow: { flexDirection: 'row', gap: 10, marginTop: 4 },
-  statChip: { flex: 1, alignItems: 'center', borderRadius: 14, paddingVertical: 12, gap: 2 },
-  statValue: { fontSize: 22, fontWeight: '800', color: Nord.nord6 },
-  sectionRow: { borderRadius: 14, padding: 14, marginTop: 10, gap: 10 },
-  sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  statValue: { fontSize: 22, fontWeight: '800', color: Accents.primary },
+  sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   sectionTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
-  sectionName: { flexShrink: 1 },
-  pctBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, fontWeight: '800', fontSize: 14, overflow: 'hidden' },
+  pctBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, overflow: 'hidden' },
+  pctBadgeText: { color: Nord.nord6, fontWeight: '800', fontSize: 14 },
   barTrack: { height: 8, borderRadius: 4, backgroundColor: Accents.track },
   barFill: { height: 8, borderRadius: 4 },
-  studentsHead: { marginTop: 20, gap: 8 },
-  studentRow: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14, padding: 12 },
-  avatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: Nord.nord6, fontWeight: '800', fontSize: 15 },
-  studentBody: { flex: 1, gap: 2 },
+  avatar: {},
+  avatarText: { color: Nord.nord6, fontSize: 15 },
   accuracyChip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
   accuracyChipText: { color: Nord.nord6, fontWeight: '800', fontSize: 13 },
 });

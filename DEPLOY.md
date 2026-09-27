@@ -56,6 +56,27 @@ and use a custom start command `npm run start -w api`.
 Render's free tier sleeps after ~15 min of no traffic. First request after idle takes ~30 s to wake.
 Acceptable for school-day usage; upgrade to a paid plan later if it annoys.
 
+### DB schema updates
+The schema lives in `core/src/db/schema.ts` (Drizzle). Create tables in the Supabase SQL editor
+from the existing schema. For databases created before these objects existed, run:
+
+```sql
+CREATE UNIQUE INDEX IF NOT EXISTS daily_sets_set_date_unique ON daily_sets (set_date);
+
+CREATE TABLE IF NOT EXISTS review_states (
+  student_id uuid NOT NULL REFERENCES profiles (id),
+  question_id uuid NOT NULL REFERENCES questions (id),
+  ease integer NOT NULL DEFAULT 250,
+  interval_days integer NOT NULL DEFAULT 0,
+  repetitions integer NOT NULL DEFAULT 0,
+  due_date date NOT NULL,
+  last_reviewed_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (student_id, question_id)
+);
+CREATE INDEX IF NOT EXISTS idx_review_states_due ON review_states (due_date);
+```
+
 ### Caveat: Supabase free-tier auto-pause
 Free Supabase projects **pause automatically after ~7 days of no activity**. Symptoms:
 the project subdomain stops resolving (login fails with "Failed to fetch", DB pooler says

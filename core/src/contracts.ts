@@ -17,8 +17,18 @@ export type Language = z.infer<typeof LANGUAGE>;
 export const SUBJECT = z.enum(["physics", "chemistry", "biology", "general"]);
 export type Subject = z.infer<typeof SUBJECT>;
 
-export const SELF_EVAL = z.enum(["got_it", "need_practice"]);
+/**
+ * Flashcard self-eval grades (Anki-style). `got_it`/`need_practice` are legacy
+ * values; the API normalizes new grades into them for storage, while the SRS
+ * scheduler consumes the precise grade from review_states.
+ */
+export const SELF_EVAL = z.enum(["got_it", "need_practice", "again", "hard", "good", "easy"]);
 export type SelfEval = z.infer<typeof SELF_EVAL>;
+
+/** Maps a self-eval grade to pass/fail. */
+export function selfEvalIsCorrect(grade: SelfEval): boolean {
+  return grade === "got_it" || grade === "good" || grade === "easy";
+}
 
 // ── Entities (API response shapes) ──────────────────────────────────────────
 
@@ -29,6 +39,8 @@ export const QuestionDto = z.object({
   question_text: z.string(),
   options: z.array(z.string()).nullable(),
   answer: z.string().nullable(),
+  /** True when this flashcard is a scheduled review (due via SRS), false for new cards. */
+  is_review: z.boolean().optional(),
 });
 export type QuestionDto = z.infer<typeof QuestionDto>;
 
@@ -95,6 +107,18 @@ export const SubmissionResponse = z.object({
 });
 export type SubmissionResponse = z.infer<typeof SubmissionResponse>;
 
+export const SrsStatsDto = z.object({
+  /** Flashcards due today (or overdue). */
+  due_today: z.number().int().min(0),
+  /** Flashcards due tomorrow. */
+  due_tomorrow: z.number().int().min(0),
+  /** Reviewed flashcards that have passed the learning phase. */
+  learned: z.number().int().min(0),
+  /** Total flashcards with SRS state. */
+  reviewed: z.number().int().min(0),
+});
+export type SrsStatsDto = z.infer<typeof SrsStatsDto>;
+
 export const MeResponse = z.object({
   profile: z.object({
     id: z.string().uuid(),
@@ -107,6 +131,7 @@ export const MeResponse = z.object({
     questions_answered: z.number().int().min(0),
     accuracy: z.number().min(0).max(1),
   }),
+  srs: SrsStatsDto,
 });
 export type MeResponse = z.infer<typeof MeResponse>;
 
@@ -166,6 +191,7 @@ export const PerformanceReport = z.object({
     z.object({ section_id: z.string().uuid(), section_no: z.string(), name: z.string(), attempts: z.number().int(), accuracy: z.number().min(0).max(1) }),
   ),
   per_student: z.array(z.object({ id: z.string().uuid(), name: z.string(), avg_accuracy: z.number().min(0).max(1), questions_answered: z.number().int() })),
+  srs: SrsStatsDto,
 });
 export type PerformanceReport = z.infer<typeof PerformanceReport>;
 

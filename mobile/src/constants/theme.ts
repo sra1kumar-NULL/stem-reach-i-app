@@ -101,6 +101,15 @@ export const Fonts = Platform.select({
   },
 });
 
+/** Typography pairs for use with the design-system components. */
+export const Type = {
+  body: { fontFamily: Fonts.sans, fontWeight: '400' } as const,
+  bodySemi: { fontFamily: Fonts.sans, fontWeight: '600' } as const,
+  bodyBold: { fontFamily: Fonts.sans, fontWeight: '700' } as const,
+  heading: { fontFamily: Fonts.rounded, fontWeight: '600' } as const,
+  headingBold: { fontFamily: Fonts.rounded, fontWeight: '700' } as const,
+};
+
 export const Spacing = {
   half: 2,
   one: 4,
@@ -110,6 +119,3 @@ export const Spacing = {
   five: 32,
   six: 64,
 } as const;
-
-export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
-export const MaxContentWidth = 800;

@@ -1,7 +1,7 @@
 import type { MiddlewareHandler, Context, Next } from "hono";
 import { eq } from "drizzle-orm";
 import { profiles, type Profile } from "@stemreach/core/db/schema";
-import { unauthorized } from "./http.js";
+import { forbidden, unauthorized } from "./http.js";
 import type { AppContext } from "./http.js";
 
 export interface AuthUser {
@@ -40,7 +40,7 @@ export function authMiddleware(ctx: AppContext): MiddlewareHandler {
 export function requireRole(...roles: Profile["role"][]): MiddlewareHandler {
   return async (c, next) => {
     const { profile } = c.var.user;
-    if (!roles.includes(profile.role)) throw unauthorized("not allowed for this role");
+    if (!roles.includes(profile.role)) throw forbidden();
     await next();
   };
 }

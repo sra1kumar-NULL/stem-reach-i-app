@@ -13,3 +13,4 @@ coverage/
 mobile/ios/
 mobile/android/
 mobile/node_modules/
+.aider*

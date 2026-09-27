@@ -5,6 +5,7 @@ import type {
   MeResponse,
   ParticipationReport,
   PerformanceReport,
+  SelfEval,
   SignupResponse,
   SubmissionResponse,
   SyllabusResponse,
@@ -68,7 +69,7 @@ export async function checkApiHealth(baseUrl = getApiBaseUrl()): Promise<boolean
 
 export const getFeedToday = () => apiFetch<FeedResponse>('/api/feed/today');
 export const getMe = () => apiFetch<MeResponse>('/api/me');
-export const submitAnswer = (body: { question_id: string; daily_set_id: string; selected_option?: number; self_eval?: 'got_it' | 'need_practice' }) =>
+export const submitAnswer = (body: { question_id: string; daily_set_id: string; selected_option?: number; self_eval?: SelfEval }) =>
   apiFetch<SubmissionResponse>('/api/submissions', { method: 'POST', body });
 
 export const getSyllabus = () => apiFetch<SyllabusResponse>('/api/syllabus');
