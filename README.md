@@ -7,11 +7,17 @@ and teachers track participation and performance — all in a bright, kid-friend
 Fully white-label: no school-specific branding anywhere, so any school can adopt it.
 
 **Docs (start here):**
+- [Architecture](docs/ARCHITECTURE.md) — short orientation: system shape, flows, stack
 - [Deployment guide](DEPLOY.md) — how to host the API + web app + Android APK
 - [PRD](docs/01-PRD.md) — product intent + curriculum
 - [HLD](docs/03-HLD.md) — architecture, flows, decisions
 - [LLD](docs/04-LLD.md) — schema, API contract, screens
 - [Roadmap](docs/05-ROADMAP.md) — milestones & gates
+- [ADRs](docs/ADR/) — architecture decision records
+
+**Working with AI agents:** [AGENTS.md](AGENTS.md) defines the review agents (`.opencode/agents/`),
+skills (`.opencode/skills/`), and workflows (`.opencode/commands/`: `/plan`, `/review`,
+`/fix-review`, `/test`, `/ship`).
 
 **Stack:** Expo/React Native (mobile) · Node+TS, Hono, Drizzle, Zod (API) · Supabase (Postgres + Auth) · [Nord theme](https://www.nordtheme.com) with Fredoka + Nunito fonts
 
