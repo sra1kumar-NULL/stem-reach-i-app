@@ -1,0 +1,74 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  "agents": {
+    "senior-engineer": {
+      "permissions": [
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "skill", "resource": "architecture", "effect": "allow" },
+        { "action": "skill", "resource": "code-review", "effect": "allow" },
+        { "action": "skill", "resource": "frontend", "effect": "allow" },
+        { "action": "skill", "resource": "testing", "effect": "allow" },
+        { "action": "skill", "resource": "security", "effect": "allow" },
+        { "action": "skill", "resource": "performance", "effect": "allow" }
+      ]
+    },
+
+    "staff-engineer": {
+      "permissions": [
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "skill", "resource": "architecture", "effect": "allow" },
+        { "action": "skill", "resource": "code-review", "effect": "allow" },
+        { "action": "skill", "resource": "performance", "effect": "allow" }
+      ]
+    },
+
+    "principal-engineer": {
+      "permissions": [
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "skill", "resource": "architecture", "effect": "allow" },
+        { "action": "skill", "resource": "security", "effect": "allow" },
+        { "action": "skill", "resource": "performance", "effect": "allow" }
+      ]
+    },
+
+    "architect": {
+      "permissions": [
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "skill", "resource": "architecture", "effect": "allow" },
+        { "action": "skill", "resource": "performance", "effect": "allow" }
+      ]
+    },
+
+    "code-reviewer": {
+      "permissions": [
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "skill", "resource": "code-review", "effect": "allow" }
+      ]
+    },
+
+    "security-reviewer": {
+      "permissions": [
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "skill", "resource": "security", "effect": "allow" },
+        { "action": "skill", "resource": "code-review", "effect": "allow" }
+      ]
+    },
+
+    "test-engineer": {
+      "permissions": [
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "skill", "resource": "testing", "effect": "allow" },
+        { "action": "skill", "resource": "security", "effect": "allow" }
+      ]
+    },
+
+    "debugger": {
+      "permissions": [
+        { "action": "skill", "resource": "*", "effect": "deny" },
+        { "action": "skill", "resource": "testing", "effect": "allow" },
+        { "action": "skill", "resource": "code-review", "effect": "allow" }
+      ]
+    }
+  }
+}

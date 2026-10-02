@@ -44,6 +44,7 @@ create table questions (
   explanation    text,                         -- 1-sentence explanation
   difficulty     text not null default 'medium' check (difficulty in ('easy','medium','hard')),
   enabled        boolean not null default true,
+  created_by     uuid references profiles(id), -- provenance: null = seed row, uuid = authoring teacher
   created_at     timestamptz not null default now(),
   check ( (qtype='mcq' and options is not null and correct_option is not null)
        or (qtype='flashcard' and options is null and correct_option is null) )
@@ -138,6 +139,19 @@ req {"date": "2026-08-02"?, "section_ids": ["…","…"]}   // date defaults to 
 200 {"per_section": [{"section_id","section_no","name","attempts","accuracy"}],
      "per_student": [{"id","name","avg_accuracy","questions_answered"}]}
 ```
+
+**`POST /api/questions`** — teacher authors a question; `created_by` comes from the verified token, never the body.
+```json
+req  {"section_id": "…", "type": "mcq|flashcard", "text": "…", "explanation": "…",
+      "options": ["…","…","…","…"]?, "correct": 0..3?, "answer": "…"?, "difficulty": "…"?, "language": "…"?}
+201  {"id","section_id","type","language","difficulty","question_text","options","answer","explanation","enabled","created_by","created_at"}
+```
+Edge cases: 400 Zod failure or unknown `section_id` · 409 duplicate question text in the same section.
+
+**`GET /api/questions?section_id=&mine=true`** → `{questions: [question…]}` (teacher-only; both filters optional, `mine=true` = only rows with `created_by` = caller).
+
+**`DELETE /api/questions/:id`** → `200 {"ok": true}`.
+Edge cases: 404 unknown id · 403 not the creator (seed rows have `created_by` null → never deletable) · 409 `submissions`/`review_states` reference it.
 
 ### Admin / content (CLI, not HTTP)
 - `npm run seed -- content/ch12.json` · `npm run verify` (orphan FK, duplicate text, correct_option in range, missing explanations).

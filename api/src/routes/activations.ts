@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, count, eq, inArray } from "drizzle-orm";
+import { count, eq, inArray } from "drizzle-orm";
 import { ZodError } from "zod";
 import { dailySetSections, dailySets, questions, sections } from "@stemreach/core/db/schema";
 import { requireRole } from "../lib/auth.js";

@@ -1,26 +1,47 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Link } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { activate, getActivations, getSyllabus } from '@/api/client';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { ConfirmSheet } from '@/components/confirm-sheet';
+import {
+  AlertDialog,
+  AlertDialogBackdrop,
+  AlertDialogBody,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+} from '@/components/ui/alert-dialog';
+import { Box } from '@/components/ui/box';
+import { Button, ButtonText } from '@/components/ui/button';
+import { Heading } from '@/components/ui/heading';
+import { Text as UIText } from '@/components/ui/text';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { useToast } from '@/components/toast';
-import { Accents, Nord } from '@/constants/theme';
-import { useAuth } from '@/state/auth';
+import { Accents, Nord, Type } from '@/constants/theme';
+import { useConfirmSignOut } from '@/hooks/use-confirm-sign-out';
+import { useTheme } from '@/hooks/use-theme';
 import type { SyllabusResponse } from '@stemreach/core';
 
+interface Row {
+  id: string;
+  label: string;
+  count: number;
+  chapter: string;
+}
+
 export default function ActivateScreen() {
-  const { signOut } = useAuth();
+  const { confirmOut, signingOut, openConfirm, closeConfirm, confirmSignOut } = useConfirmSignOut();
   const { showToast } = useToast();
+  const theme = useTheme();
   const [syllabus, setSyllabus] = useState<SyllabusResponse | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [todaySections, setTodaySections] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const pressScale = useRef(new Animated.Value(1)).current;
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const load = useCallback(() => {
     setError(null);
@@ -45,16 +66,34 @@ export default function ActivateScreen() {
     });
   };
 
-  const save = async () => {
-    if (selected.size === 0) {
-      showToast('Select at least one section', 'info');
-      return;
+  const toggleChapter = (chapterId: string) => {
+    const sectionIds = (syllabus?.chapters ?? []).find((ch) => ch.id === chapterId)?.sections.map((s) => s.id) ?? [];
+    setSelected((prev) => {
+      const next = new Set(prev);
+      const allOn = sectionIds.every((id) => next.has(id));
+      for (const id of sectionIds) {
+        if (allOn) next.delete(id);
+        else next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const rows: Row[] = [];
+  for (const ch of syllabus?.chapters ?? []) {
+    for (const s of ch.sections) {
+      rows.push({ id: s.id, label: s.section_no, count: s.enabled_question_count, chapter: ch.name });
     }
+  }
+
+  const selectedQuestionCount = rows.filter((r) => selected.has(r.id)).reduce((n, r) => n + r.count, 0);
+  const isChanged =
+    [...selected].sort().join(',') !==
+    [...todaySections].sort().join(',');
+
+  const doSave = async () => {
     setBusy(true);
-    Animated.sequence([
-      Animated.spring(pressScale, { toValue: 0.96, useNativeDriver: true, speed: 30 }),
-      Animated.spring(pressScale, { toValue: 1, useNativeDriver: true, friction: 4 }),
-    ]).start();
+    setConfirmOpen(false);
     try {
       const res = await activate({ section_ids: [...selected] });
       const total = res.sections.reduce((n, s) => n + s.question_count, 0);
@@ -67,105 +106,177 @@ export default function ActivateScreen() {
     }
   };
 
-  const rows: { id: string; label: string; count: number; chapter: string }[] = [];
-  for (const ch of syllabus?.chapters ?? []) {
-    for (const s of ch.sections) {
-      rows.push({ id: s.id, label: s.section_no, count: s.enabled_question_count, chapter: ch.name });
+  const save = () => {
+    if (selected.size === 0) {
+      showToast('Select at least one section', 'info');
+      return;
     }
-  }
+    if (isChanged) setConfirmOpen(true);
+    else doSave();
+  };
 
   return (
-    <ThemedView style={styles.container}>
+    <Box className="flex-1 bg-background">
       <SafeAreaView style={styles.safe}>
-        <ThemedView style={styles.headerRow}>
-          <ThemedText type="title" style={styles.header}>
-            Today's Revision
-          </ThemedText>
-          <Pressable
-            onPress={() => signOut()}
-            style={({ pressed }) => [styles.signoutBtn, pressed && styles.pressed]}
-          >
-            <Ionicons name="log-out-outline" size={14} color={Nord.nord4} />
-            <Text style={styles.signoutText}>Sign out</Text>
-          </Pressable>
-        </ThemedView>
+        <View style={styles.headerRow}>
+          <Heading className="text-2xl" style={Type.heading}>
+            Today&apos;s Revision
+          </Heading>
+          <View style={styles.headerActions}>
+            <ThemeToggle />
+            <Pressable
+              onPress={openConfirm}
+              style={({ pressed }) => [styles.signoutBtn, pressed && { opacity: 0.6 }]}
+              accessibilityRole="button"
+              accessibilityLabel="Sign out"
+            >
+              <Ionicons name="log-out-outline" size={14} color={theme.text} />
+              <Text style={[styles.signoutText, { color: theme.text }]}>Sign out</Text>
+            </Pressable>
+          </View>
+        </View>
 
-        <ThemedText type="small" themeColor="textSecondary">
-          Mark the sections you taught today, then activate. Students' feeds update instantly. ✨
-        </ThemedText>
+        <UIText className="text-sm text-muted-foreground" style={Type.body}>
+          Mark the sections you taught today, then activate. Students&apos; feeds update instantly. ✨
+        </UIText>
 
         {error && (
-          <ThemedView type="backgroundElement" style={styles.messageBox}>
-            <ThemedText type="small">{error}</ThemedText>
-            <Pressable style={styles.retryBtn} onPress={load}>
-              <Text style={styles.retryLabel}>Retry</Text>
-            </Pressable>
-          </ThemedView>
+          <Box className="bg-danger-soft rounded-xl p-3 gap-2">
+            <UIText className="text-sm text-foreground" style={Type.body}>
+              {error}
+            </UIText>
+            <Button variant="default" size="sm" className="self-start rounded-lg" onPress={load}>
+              <ButtonText style={Type.bodyBold}>Retry</ButtonText>
+            </Button>
+          </Box>
         )}
 
         {syllabus == null && !error ? (
-          <ActivityIndicator size="large" style={{ marginTop: 40 }} />
+          <ActivityIndicator size="large" color={Accents.primary} style={{ marginTop: 40 }} />
         ) : (
           <FlatList
-            data={rows}
-            keyExtractor={(r) => r.id}
-            renderItem={({ item }) => {
-              const isOn = selected.has(item.id);
-              const wasToday = todaySections.has(item.id);
+            data={syllabus?.chapters ?? []}
+            keyExtractor={(ch) => ch.id}
+            renderItem={({ item: chapter }) => {
+              const allOn = chapter.sections.every((s) => selected.has(s.id));
+              const someOn = chapter.sections.some((s) => selected.has(s.id));
               return (
-                <Pressable onPress={() => toggle(item.id)} style={[styles.row, isOn && styles.rowOn]}>
-                  <ThemedView style={[styles.dot, { backgroundColor: isOn ? Accents.success : Accents.border }]} />
-                  <ThemedView style={styles.rowBody}>
-                    <ThemedText style={styles.rowLabel}>
-                      {item.chapter} — {item.label}
-                    </ThemedText>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {item.count} questions{wasToday && !isOn ? ' · was active today' : ''}
-                    </ThemedText>
-                  </ThemedView>
-                  <Text style={styles.check}>{isOn ? '✓' : ''}</Text>
-                </Pressable>
+                <Box className="mb-2">
+                  <Pressable onPress={() => toggleChapter(chapter.id)} style={({ pressed }) => [styles.chapterHead, pressed && { opacity: 0.7 }]}>
+                    <View style={[styles.dot, { backgroundColor: allOn ? Accents.success : someOn ? Accents.warn : Accents.border }]} />
+                    <UIText className="flex-1 text-base font-bold text-foreground" style={Type.bodyBold}>
+                      {chapter.name}
+                    </UIText>
+                    <Text style={[styles.check, { color: allOn ? theme.successText : Accents.border }]}>{allOn ? '✓' : '—'}</Text>
+                  </Pressable>
+                  <Box className="gap-2 pl-4">
+                    {chapter.sections.map((s) => {
+                      const isOn = selected.has(s.id);
+                      const wasToday = todaySections.has(s.id);
+                      return (
+                        <Pressable
+                          key={s.id}
+                          onPress={() => toggle(s.id)}
+                          style={({ pressed }) => [styles.row, isOn && styles.rowOn, pressed && { opacity: 0.8 }]}
+                        >
+                          <View style={[styles.dot, { backgroundColor: isOn ? Accents.success : Accents.border }]} />
+                          <Box className="flex-1 gap-0.5">
+                            <UIText className="text-foreground" style={Type.bodySemi}>
+                              {chapter.name} — {s.section_no}
+                            </UIText>
+                            <UIText className="text-xs text-muted-foreground" style={Type.body}>
+                              {s.enabled_question_count} questions{wasToday && !isOn ? ' · was active today' : ''}
+                            </UIText>
+                          </Box>
+                          <Text style={[styles.check, { color: isOn ? theme.successText : 'transparent' }]}>✓</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </Box>
+                </Box>
               );
             }}
-            contentContainerStyle={{ paddingBottom: 120 }}
+            contentContainerStyle={{ paddingBottom: 140 }}
           />
         )}
 
-        <ThemedView style={styles.footer}>
-          <ThemedText type="smallBold">
-            {selected.size} selected · {rows.filter((r) => selected.has(r.id)).reduce((n, r) => n + r.count, 0)} questions
-          </ThemedText>
-          <Pressable style={[styles.activateBtn, (busy || selected.size === 0) && styles.activateDisabled]} onPress={save} disabled={busy}>
+        <Box className="gap-2 py-2" style={styles.footer}>
+          <UIText className="text-sm font-bold text-foreground" style={Type.bodyBold}>
+            {selected.size} selected · {selectedQuestionCount} questions
+          </UIText>
+          <Button
+            variant="default"
+            size="lg"
+            className={`rounded-2xl ${busy || selected.size === 0 ? 'opacity-50' : ''}`}
+            onPress={save}
+            disabled={busy || selected.size === 0}
+          >
             {busy ? (
               <ActivityIndicator color={Nord.nord6} />
             ) : (
-              <View style={styles.activateLabelRow}>
-                <Ionicons name="rocket-outline" size={18} color={Nord.nord6} />
-                <Text style={styles.activateLabel}>Activate Revision</Text>
-              </View>
+              <ButtonText style={Type.bodyBold}>🚀 Activate Revision</ButtonText>
             )}
-          </Pressable>
-          <ThemedView style={styles.navRow}>
+          </Button>
+          <View style={styles.navRow}>
             <Link href="/(teacher)/participation" style={styles.navLink}>
               <Ionicons name="people-outline" size={16} color={Accents.primary} />
-              <ThemedText style={styles.navText}>Participation</ThemedText>
+              <UIText className="text-primary-text font-bold" style={Type.bodyBold}>
+                Participation
+              </UIText>
             </Link>
             <Link href="/(teacher)/reports" style={styles.navLink}>
               <Ionicons name="bar-chart-outline" size={16} color={Accents.primary} />
-              <ThemedText style={styles.navText}>Performance</ThemedText>
+              <UIText className="text-primary-text font-bold" style={Type.bodyBold}>
+                Performance
+              </UIText>
             </Link>
-          </ThemedView>
-        </ThemedView>
+          </View>
+        </Box>
       </SafeAreaView>
-    </ThemedView>
+
+      <ConfirmSheet
+        visible={confirmOut}
+        title="Sign out?"
+        message="You'll need to sign in again to continue."
+        confirmLabel="Sign out"
+        loading={signingOut}
+        onConfirm={confirmSignOut}
+        onCancel={closeConfirm}
+      />
+
+      <AlertDialog isOpen={confirmOpen} onClose={() => setConfirmOpen(false)}>
+        <AlertDialogBackdrop onPress={() => setConfirmOpen(false)} />
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <Heading className="text-xl" style={Type.heading}>
+              Confirm activation
+            </Heading>
+          </AlertDialogHeader>
+          <AlertDialogBody>
+            <UIText className="text-sm text-muted-foreground" style={Type.body}>
+              {isChanged
+                ? `This changes today's revision to ${selected.size} section(s) (${selectedQuestionCount} questions). Students' feeds will update immediately.`
+                : `Today's revision is already set to ${selected.size} section(s).`}
+            </UIText>
+          </AlertDialogBody>
+          <AlertDialogFooter>
+            <Button variant="outline" className="rounded-xl" onPress={() => setConfirmOpen(false)}>
+              <ButtonText style={Type.bodyBold}>Cancel</ButtonText>
+            </Button>
+            <Button variant="default" className="rounded-xl" onPress={doSave} disabled={busy}>
+              <ButtonText style={Type.bodyBold}>Yes, activate</ButtonText>
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Box>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
   safe: { flex: 1, padding: 16, gap: 12 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  header: { fontSize: 28 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   signoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -176,11 +287,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
-  signoutText: { color: Nord.nord4, fontSize: 13, fontWeight: '600' },
-  pressed: { opacity: 0.6 },
-  messageBox: { borderRadius: 12, padding: 12, gap: 8 },
-  retryBtn: { alignSelf: 'flex-start', backgroundColor: Accents.primary, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 6 },
-  retryLabel: { color: Nord.nord6, fontWeight: '700' },
+  signoutText: { fontSize: 13, fontWeight: '600' },
+  chapterHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -189,19 +303,11 @@ const styles = StyleSheet.create({
     borderColor: Accents.border,
     borderRadius: 14,
     padding: 14,
-    marginBottom: 8,
   },
   rowOn: { borderColor: Accents.success, backgroundColor: Accents.successSoft },
   dot: { width: 10, height: 10, borderRadius: 5 },
-  rowBody: { flex: 1, gap: 2 },
-  rowLabel: { flexShrink: 1 },
-  check: { color: Accents.success, fontSize: 18, fontWeight: '800' },
-  footer: { gap: 8, paddingVertical: 8 },
-  activateBtn: { backgroundColor: Accents.primary, borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
-  activateDisabled: { opacity: 0.5 },
-  activateLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  activateLabel: { color: Nord.nord6, fontWeight: '700', fontSize: 16 },
+  check: { fontSize: 18, fontWeight: '800' },
+  footer: { position: 'absolute', left: 16, right: 16, bottom: 12 },
   navRow: { flexDirection: 'row', justifyContent: 'space-around' },
   navLink: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8 },
-  navText: { color: Accents.primary, fontWeight: '700', fontSize: 15 },
 });

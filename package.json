@@ -9,12 +9,13 @@
     "scripts"
   ],
   "scripts": {
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present && npm --prefix mobile run typecheck",
+    "test": "npm test --workspaces --if-present",
     "seed": "npm run seed -w scripts",
     "verify": "npm run verify -w scripts",
     "dev:api": "npm run dev -w api"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.6"
   }
 }

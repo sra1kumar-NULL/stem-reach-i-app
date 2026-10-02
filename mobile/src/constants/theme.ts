@@ -38,6 +38,13 @@ export const Colors = {
     backgroundElement: Nord.nord5,
     backgroundSelected: Nord.nord4,
     textSecondary: Nord.nord3,
+    /* Accent-colored text on light surfaces — mirrors the `--*-text` light
+       values in global.css (same Nord hue, lightness lowered for ≥4.5:1). */
+    primaryText: '#446083',
+    successText: '#526B3D',
+    warnText: '#846017',
+    dangerText: '#9C3F48',
+    purpleText: '#7E5376',
   },
   dark: {
     text: Nord.nord6,
@@ -45,10 +52,42 @@ export const Colors = {
     backgroundElement: Nord.nord1,
     backgroundSelected: Nord.nord2,
     textSecondary: Nord.nord4,
+    /* Accent-colored text on dark surfaces — mirrors the `--*-text` dark
+       values in global.css (same Nord hue, lightness raised for ≥4.5:1). */
+    primaryText: '#ABBDD3',
+    successText: '#BACEA9',
+    warnText: '#EBCB8B',
+    dangerText: '#DEADB2',
+    purpleText: '#D2BBCD',
   },
 } as const;
 
 export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
+
+/**
+ * Readable label/icon color (nord0 or nord6) for a SOLID accent fill — avatar
+ * chips, status pills, pastel buttons — where the fill does not follow the
+ * theme. Picks whichever has the higher WCAG contrast against the fill.
+ * For accent *text on theme surfaces*, use the `--*-text` tokens instead.
+ */
+export function onAccent(fill: string): string {
+  const toRgb = (hex: string) => {
+    const h = hex.replace('#', '');
+    return [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  };
+  const luminance = (rgb: number[]) => {
+    const [r, g, b] = rgb.map((v) => {
+      const s = v / 255;
+      return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const contrastWith = (fg: string) => {
+    const [a, b] = [luminance(toRgb(fg)), luminance(toRgb(fill))].sort((x, y) => y - x);
+    return (a + 0.05) / (b + 0.05);
+  };
+  return contrastWith(Nord.nord0) >= contrastWith(Nord.nord6) ? Nord.nord0 : Nord.nord6;
+}
 
 /** Semantic accent palette (Nord-derived) shared across light & dark mode. */
 export const Accents = {
@@ -101,6 +140,15 @@ export const Fonts = Platform.select({
   },
 });
 
+/** Typography pairs for use with the design-system components. */
+export const Type = {
+  body: { fontFamily: Fonts.sans, fontWeight: '400' } as const,
+  bodySemi: { fontFamily: Fonts.sans, fontWeight: '600' } as const,
+  bodyBold: { fontFamily: Fonts.sans, fontWeight: '700' } as const,
+  heading: { fontFamily: Fonts.rounded, fontWeight: '600' } as const,
+  headingBold: { fontFamily: Fonts.rounded, fontWeight: '700' } as const,
+};
+
 export const Spacing = {
   half: 2,
   one: 4,
@@ -110,6 +158,3 @@ export const Spacing = {
   five: 32,
   six: 64,
 } as const;
-
-export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
-export const MaxContentWidth = 800;

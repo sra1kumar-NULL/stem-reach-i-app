@@ -1,10 +1,125 @@
 @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+@import 'uniwind';
 
-:root {
-  --font-sans: Nunito, ui-sans-serif, system-ui, sans-serif, Apple Color Emoji, Segoe UI Emoji,
-    Segoe UI Symbol, Noto Color Emoji;
-  --font-rounded: Fredoka, 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif;
-  --font-mono:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;
-  --font-serif: Georgia, 'Times New Roman', serif;
+/* ─── UniWind theme variants ─────────────────────────────────────
+   Switched at runtime via Uniwind.setTheme('light' | 'dark').
+   Nord palette: Polar Night (dark) / Snow Storm (light), Frost primary. */
+@layer theme {
+  :root {
+    @variant light {
+      --primary: 94 129 172;
+      --primary-foreground: 236 239 244;
+      --card: 229 233 240;
+      --secondary: 216 222 233;
+      --secondary-foreground: 46 52 64;
+      --background: 236 239 244;
+      --popover: 229 233 240;
+      --popover-foreground: 46 52 64;
+      --muted: 229 233 240;
+      --muted-foreground: 76 86 106;
+      --destructive: 191 97 106;
+      --foreground: 46 52 64;
+      --border: 76 86 106;
+      --input: 76 86 106;
+      --ring: 94 129 172;
+      --accent: 216 222 233;
+      --accent-foreground: 46 52 64;
+
+      /* Readable accent TEXT on Snow Storm surfaces (incl. the 16% soft tints).
+         Same Nord aurora hue & saturation, lightness lowered until ≥4.5:1 —
+         the raw aurora values only reach 1.2–2.8:1 on light backgrounds. */
+      --primary-text: 68 96 131;
+      --success-text: 82 107 61;
+      --warn-text: 132 96 23;
+      --danger-text: 156 63 72;
+      --purple-text: 126 83 118;
+    }
+
+    @variant dark {
+      --primary: 94 129 172;
+      --primary-foreground: 236 239 244;
+      --card: 59 66 82;
+      --secondary: 67 76 94;
+      --secondary-foreground: 236 239 244;
+      --background: 46 52 64;
+      --popover: 59 66 82;
+      --popover-foreground: 236 239 244;
+      --muted: 59 66 82;
+      --muted-foreground: 216 222 233;
+      --destructive: 191 97 106;
+      --foreground: 236 239 244;
+      --border: 76 86 106;
+      --input: 76 86 106;
+      --ring: 136 192 208;
+      --accent: 67 76 94;
+      --accent-foreground: 236 239 244;
+
+      /* Readable accent TEXT on Polar Night surfaces (incl. the 16% soft tints).
+         Same Nord aurora hue & saturation, lightness raised until ≥4.5:1 —
+         raw nord10/nord11/nord15 only reach 2.1–2.9:1 on dark backgrounds. */
+      --primary-text: 171 189 211;
+      --success-text: 186 206 169;
+      --warn-text: 235 203 139;
+      --danger-text: 222 173 178;
+      --purple-text: 210 187 205;
+    }
+  }
+}
+
+/* ─── Tailwind v4 color mappings ─────────────────────────────────
+   Maps the theme CSS variables above to Tailwind color utilities.
+   bg-primary → rgb(var(--primary)), text-foreground → rgb(var(--foreground)), etc. */
+@theme inline {
+  --color-primary: rgb(var(--primary));
+  --color-primary-foreground: rgb(var(--primary-foreground));
+  --color-card: rgb(var(--card));
+  --color-secondary: rgb(var(--secondary));
+  --color-secondary-foreground: rgb(var(--secondary-foreground));
+  --color-background: rgb(var(--background));
+  --color-popover: rgb(var(--popover));
+  --color-popover-foreground: rgb(var(--popover-foreground));
+  --color-muted: rgb(var(--muted));
+  --color-muted-foreground: rgb(var(--muted-foreground));
+  --color-destructive: rgb(var(--destructive));
+  --color-foreground: rgb(var(--foreground));
+  --color-border: rgb(var(--border));
+  --color-input: rgb(var(--input));
+  --color-ring: rgb(var(--ring));
+  --color-accent: rgb(var(--accent));
+  --color-accent-foreground: rgb(var(--accent-foreground));
+
+  /* Semantic accents (Aurora), identical in light & dark */
+  --color-success: #A3BE8C;
+  --color-warn: #EBCB8B;
+  --color-danger: #BF616A;
+  --color-purple: #B48EAD;
+  --color-teal: #8FBCBB;
+  --color-pink: #D08770;
+
+  /* Soft (tinted) variants used for selected/feedback surfaces */
+  --color-primary-soft: #5E81AC29;
+  --color-success-soft: #A3BE8C29;
+  --color-warn-soft: #EBCB8B29;
+  --color-danger-soft: #BF616A29;
+  --color-purple-soft: #B48EAD29;
+
+  /* Readable accent foregrounds (text) — per-variant, see @variant blocks above.
+     Use `text-success-text` etc. for accent-colored text; `bg-success`/`border-success`
+     keep the base aurora fill. Mirrored in Colors.*Text in constants/theme.ts. */
+  --color-primary-text: rgb(var(--primary-text));
+  --color-success-text: rgb(var(--success-text));
+  --color-warn-text: rgb(var(--warn-text));
+  --color-danger-text: rgb(var(--danger-text));
+  --color-purple-text: rgb(var(--purple-text));
+
+  /* Kid-friendly fonts (web): Nunito body, Fredoka headings */
+  /* Font stacks must be single-line, quote-free: uniwind 1.11's CSS serializer strips
+     quotes and mangles quoted/multi-line stacks into broken JS (`Nunitoui - sans-serif...`),
+     which crashes native builds with `ReferenceError: Property 'Nunitoui' doesn't exist`.
+     OS/browser font fallback still covers emoji and missing glyphs. */
+  --font-sans: Nunito, ui-sans-serif, system-ui, sans-serif;
+  --font-rounded: Fredoka, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-serif: Georgia, serif;
 }

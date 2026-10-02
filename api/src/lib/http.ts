@@ -32,6 +32,10 @@ export function forbidden(message = "not allowed for this role"): HttpError {
   return new HttpError(403, "forbidden", message);
 }
 
+export function conflict(message: string): HttpError {
+  return new HttpError(409, "conflict", message);
+}
+
 export function notFound(message = "resource not found"): HttpError {
   return new HttpError(404, "not_found", message);
 }

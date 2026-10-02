@@ -1,21 +1,19 @@
 import { z } from "zod";
-import { DIFFICULTY, LANGUAGE, QUESTION_TYPE, SUBJECT } from "./contracts.js";
+import {
+  AUTHORED_QUESTION_RULE,
+  AuthoredQuestion,
+  SUBJECT,
+  authoredQuestionOk,
+} from "./contracts.ts";
 
-export const SeedQuestion = z
-  .object({
-    type: QUESTION_TYPE,
-    difficulty: DIFFICULTY.default("medium"),
-    language: LANGUAGE.default("en"),
-    text: z.string().min(1),
-    options: z.array(z.string().min(1)).length(4).optional(),
-    correct: z.number().int().min(0).max(3).optional(),
-    answer: z.string().min(1).optional(),
-    explanation: z.string().min(1),
-  })
-  .refine(
-    (q) => (q.type === "mcq" && q.options != null && q.correct != null) || (q.type === "flashcard" && q.answer != null && q.options == null),
-    { message: "mcq requires options[4] + correct; flashcard requires answer and no options" },
-  );
+/**
+ * Canonical question shape for content/*.json — built from the shared
+ * AuthoredQuestion object so seed content and teacher API input
+ * (CreateQuestionRequest) are validated by exactly the same rules.
+ */
+export const SeedQuestion = AuthoredQuestion.refine(authoredQuestionOk, {
+  message: AUTHORED_QUESTION_RULE,
+});
 export type SeedQuestion = z.infer<typeof SeedQuestion>;
 
 export const SeedSection = z.object({
