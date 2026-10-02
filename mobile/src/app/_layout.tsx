@@ -1,15 +1,34 @@
 import { useFonts as useFredoka, Fredoka_500Medium, Fredoka_600SemiBold, Fredoka_700Bold } from '@expo-google-fonts/fredoka';
 import { useFonts as useNunito, Nunito_400Regular, Nunito_600SemiBold, Nunito_700Bold } from '@expo-google-fonts/nunito';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider, usePathname, useRouter } from 'expo-router';
+import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaListener } from 'react-native-safe-area-context';
 import { Uniwind } from 'uniwind';
 
-import { AuthProvider } from '@/state/auth';
+import { AuthProvider, useAuth } from '@/state/auth';
 import { ThemeProvider as AppThemeProvider, useThemePreference } from '@/state/theme';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { ToastProvider } from '@/components/toast';
 import { GluestackUIProvider } from '@/components/ui/gluestack-ui-provider';
+
+// Custom hook to handle role-based navigation
+function useRoleBasedNavigation() {
+  const { me } = useAuth();
+  const pathname = usePathname();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!me) return;
+
+    // Redirect to appropriate role-based screen
+    if (me.role === 'student' && !pathname.startsWith('/(student)')) {
+      router.replace('/(student)');
+    } else if (me.role === 'teacher' && !pathname.startsWith('/(teacher)')) {
+      router.replace('/(teacher)');
+    }
+  }, [me, pathname, router]);
+}
 
 export default function RootLayout() {
   const [fredokaLoaded] = useFredoka({
@@ -57,17 +76,26 @@ function AppShell() {
         <ErrorBoundary>
           <AuthProvider>
             <ToastProvider>
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="index" />
-                <Stack.Screen name="login" />
-                <Stack.Screen name="signup" />
-                <Stack.Screen name="(student)" />
-                <Stack.Screen name="(teacher)" />
-              </Stack>
+              <RoleBasedNavigationWrapper />
             </ToastProvider>
           </AuthProvider>
         </ErrorBoundary>
       </ThemeProvider>
     </GluestackUIProvider>
+  );
+}
+
+function RoleBasedNavigationWrapper() {
+  useRoleBasedNavigation();
+
+  return (
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="index" />
+      <Stack.Screen name="login" />
+      <Stack.Screen name="signup" />
+      <Stack.Screen name="(student)" />
+      <Stack.Screen name="(teacher)" />
+      <Stack.Screen name="(self-study)" />
+    </Stack>
   );
 }
