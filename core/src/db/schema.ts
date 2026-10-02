@@ -48,6 +48,9 @@ export const questions = pgTable(
     difficulty: text("difficulty", { enum: ["easy", "medium", "hard"] }).notNull().default("medium"),
     enabled: boolean("enabled").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    /** Author provenance: set from the verified token for teacher-created questions;
+     *  null for rows loaded from content/ by the seed script. Nullable — existing rows stay valid. */
+    createdBy: uuid("created_by").references(() => profiles.id),
   },
   (t) => [uniqueIndex("questions_section_text_unique").on(t.sectionId, t.questionText), index("idx_questions_section").on(t.sectionId)],
 );

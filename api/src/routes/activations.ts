@@ -1,7 +1,7 @@
 import { Hono } from "hono";
-import { and, count, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { count, eq, inArray } from "drizzle-orm";
 import { ZodError } from "zod";
-import { dailySetSections, dailySets, questions, sections, submissions } from "@stemreach/core/db/schema";
+import { dailySetSections, dailySets, questions, sections } from "@stemreach/core/db/schema";
 import { requireRole } from "../lib/auth.js";
 import type { AppContext } from "../lib/http.js";
 import { badRequest } from "../lib/http.js";
@@ -75,19 +75,6 @@ export function routes(ctx: AppContext): Hono {
       await ctx.db
         .insert(dailySetSections)
         .values(body.section_ids.map((sectionId) => ({ dailySetId: setId, sectionId })));
-    }
-
-    // Drop submissions whose questions are no longer part of this set, so stale
-    // answers don't inflate progress/reports for the day.
-    if (existing.length > 0) {
-      const stale = await ctx.db
-        .select({ id: submissions.id })
-        .from(submissions)
-        .innerJoin(questions, eq(questions.id, submissions.questionId))
-        .where(and(eq(submissions.dailySetId, setId), body.section_ids.length > 0 ? notInArray(questions.sectionId, body.section_ids) : sql`true`));
-      if (stale.length > 0) {
-        await ctx.db.delete(submissions).where(inArray(submissions.id, stale.map((s) => s.id)));
-      }
     }
 
     return c.json(await snapshot(ctx, date));

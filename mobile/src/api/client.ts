@@ -28,6 +28,26 @@ export function setAccessToken(token: string | null): void {
   accessToken = token;
 }
 
+/** Longest `apiFetch` will wait for the initial session restore before proceeding. */
+const AUTH_INIT_CAP_MS = 3000;
+
+const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+let authInitialized = false;
+let resolveAuthInitialized: () => void = () => {};
+const authInitialization = new Promise<void>((resolve) => {
+  resolveAuthInitialized = resolve;
+});
+
+/** Signals that the initial session restore has settled (session or none).
+ * Called exactly once by `state/auth.tsx`; idempotent, and it releases any
+ * `apiFetch` that is waiting for the token. */
+export function markAuthInitialized(): void {
+  if (authInitialized) return;
+  authInitialized = true;
+  resolveAuthInitialized();
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -39,6 +59,13 @@ export class ApiError extends Error {
 }
 
 export async function apiFetch<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
+  // Race gate: a fetch issued before the session restore settles would go out
+  // without an Authorization header and get a 401. Wait (bounded) for auth to
+  // initialize only while we still have no token. Once initialized, a missing
+  // token means signed out — proceed immediately, no deadlock.
+  if (!accessToken && !authInitialized) {
+    await Promise.race([authInitialization, wait(AUTH_INIT_CAP_MS)]);
+  }
   const res = await fetch(`${getApiBaseUrl()}${path}`, {
     method: init?.method ?? 'GET',
     headers: {

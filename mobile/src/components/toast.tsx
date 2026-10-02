@@ -44,7 +44,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-{toast && (
+      {toast && (
         <Animated.View
           style={[
             styles.toast,

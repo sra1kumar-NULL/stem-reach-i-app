@@ -11,7 +11,7 @@ import { Button, ButtonText } from '@/components/ui/button';
 import { Heading } from '@/components/ui/heading';
 import { Input, InputField } from '@/components/ui/input';
 import { Text as UIText } from '@/components/ui/text';
-import { Accents, Fonts, Type } from '@/constants/theme';
+import { Accents, Fonts, Nord, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/state/auth';
 
@@ -79,7 +79,7 @@ export default function SignupScreen() {
                   style={({ pressed }) => [styles.roleBtn, role === 'student' && styles.roleActive, pressed && { opacity: 0.8 }]}
                   onPress={() => setRole('student')}
                 >
-                  <Ionicons name="school-outline" size={18} color={role === 'student' ? '#ECEFF4' : theme.textSecondary} />
+                  <Ionicons name="school-outline" size={18} color={role === 'student' ? Nord.nord6 : theme.textSecondary} />
                   <UIText className={`font-semibold ${role === 'student' ? 'text-primary-foreground' : 'text-muted-foreground'}`} style={Type.bodySemi}>
                     Student
                   </UIText>
@@ -88,7 +88,7 @@ export default function SignupScreen() {
                   style={({ pressed }) => [styles.roleBtn, role === 'teacher' && styles.roleActive, pressed && { opacity: 0.8 }]}
                   onPress={() => setRole('teacher')}
                 >
-                  <Ionicons name="person-outline" size={18} color={role === 'teacher' ? '#ECEFF4' : theme.textSecondary} />
+                  <Ionicons name="person-outline" size={18} color={role === 'teacher' ? Nord.nord6 : theme.textSecondary} />
                   <UIText className={`font-semibold ${role === 'teacher' ? 'text-primary-foreground' : 'text-muted-foreground'}`} style={Type.bodySemi}>
                     Teacher
                   </UIText>
@@ -144,7 +144,7 @@ export default function SignupScreen() {
               )}
 
               {error && (
-                <UIText className="text-center text-danger text-sm" style={Type.body}>
+                <UIText className="text-center text-danger-text text-sm" style={Type.body}>
                   {error}
                 </UIText>
               )}

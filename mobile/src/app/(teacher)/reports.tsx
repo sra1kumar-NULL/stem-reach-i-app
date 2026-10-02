@@ -9,7 +9,8 @@ import { Avatar, AvatarFallbackText } from '@/components/ui/avatar';
 import { Box } from '@/components/ui/box';
 import { Heading } from '@/components/ui/heading';
 import { Text as UIText } from '@/components/ui/text';
-import { Accents, Nord, Type } from '@/constants/theme';
+import { Accents, Nord, onAccent, Type } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import type { PerformanceReport } from '@stemreach/core';
 
 const BAR_MAX = 100;
@@ -63,6 +64,7 @@ function AnimatedBar({ pct, color }: { pct: number; color: string }) {
 
 export default function ReportsScreen() {
   const [range, setRange] = useState<RangeKey>('today');
+  const theme = useTheme();
   const [report, setReport] = useState<PerformanceReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -90,12 +92,12 @@ export default function ReportsScreen() {
   const totalAnswers = students.reduce((n, s) => n + s.questions_answered, 0);
 
   return (
-    <Box className="flex-1">
+    <Box className="flex-1 bg-background">
       <SafeAreaView style={styles.safe}>
         <View style={styles.headerRow}>
           <Link href="/(teacher)" style={styles.back}>
             <Ionicons name="chevron-back" size={22} color={Accents.primary} />
-            <UIText className="text-primary text-xl" style={Type.bodyBold}>
+            <UIText className="text-primary-text text-xl" style={Type.bodyBold}>
               Back
             </UIText>
           </Link>
@@ -113,7 +115,7 @@ export default function ReportsScreen() {
                 onPress={() => setRange(key)}
                 style={({ pressed }) => [styles.chip, active && styles.chipActive, pressed && { opacity: 0.7 }]}
               >
-                <Text style={[styles.chipLabel, active && styles.chipLabelActive]}>{label}</Text>
+                <Text style={[styles.chipLabel, { color: active ? onAccent(Accents.primary) : theme.primaryText }]}>{label}</Text>
               </Pressable>
             );
           })}
@@ -135,12 +137,13 @@ export default function ReportsScreen() {
             renderItem={({ item }) => {
               const pct = item.attempts > 0 ? item.accuracy * 100 : 0;
               const color = item.attempts > 0 ? accuracyColor(pct) : Accents.border;
+              const badgeBg = item.attempts > 0 ? color : Nord.nord2;
               return (
                 <Box className="bg-card rounded-2xl p-3.5 mt-2.5 gap-2.5">
                   <View style={styles.sectionHead}>
                     <View style={styles.sectionTitleWrap}>
-                      <View style={[styles.pctBadge, { backgroundColor: item.attempts > 0 ? color : Nord.nord2 }]}>
-                        <Text style={styles.pctBadgeText}>{item.attempts > 0 ? fmt(item.accuracy) : '—'}</Text>
+                      <View style={[styles.pctBadge, { backgroundColor: badgeBg }]}>
+                        <Text style={[styles.pctBadgeText, { color: onAccent(badgeBg) }]}>{item.attempts > 0 ? fmt(item.accuracy) : '—'}</Text>
                       </View>
                       <UIText className="text-sm font-bold text-foreground flex-1" style={Type.bodyBold}>
                         {item.section_no} — {item.name}
@@ -162,7 +165,7 @@ export default function ReportsScreen() {
                   { value: String(students.length), label: 'students' },
                 ].map((chip) => (
                   <Box key={chip.label} className="bg-card flex-1 items-center rounded-2xl py-3 gap-0.5">
-                    <Text style={styles.statValue}>{chip.value}</Text>
+                    <Text style={[styles.statValue, { color: theme.primaryText }]}>{chip.value}</Text>
                     <UIText className="text-xs text-muted-foreground" style={Type.body}>
                       {chip.label}
                     </UIText>
@@ -177,10 +180,12 @@ export default function ReportsScreen() {
                 </UIText>
                 {students.map((s, i) => {
                   const pct = s.avg_accuracy * 100;
+                  const avatarColor = AVATAR_COLORS[i % AVATAR_COLORS.length];
+                  const accColor = accuracyColor(pct);
                   return (
                     <Box key={s.id} className="bg-card flex-row items-center gap-3 rounded-2xl p-3">
-                      <Avatar className="rounded-full" style={[styles.avatar, { backgroundColor: AVATAR_COLORS[i % AVATAR_COLORS.length] }]}>
-                        <AvatarFallbackText className="font-extrabold" style={styles.avatarText}>
+                      <Avatar className="rounded-full" style={[styles.avatar, { backgroundColor: avatarColor }]}>
+                        <AvatarFallbackText className="font-extrabold" style={[styles.avatarText, { color: onAccent(avatarColor) }]}>
                           {initials(s.name)}
                         </AvatarFallbackText>
                       </Avatar>
@@ -192,8 +197,8 @@ export default function ReportsScreen() {
                           {s.questions_answered} answers · rank #{i + 1}
                         </UIText>
                       </Box>
-                      <View style={[styles.accuracyChip, { backgroundColor: accuracyColor(pct) }]}>
-                        <Text style={styles.accuracyChipText}>{fmt(s.avg_accuracy)}</Text>
+                      <View style={[styles.accuracyChip, { backgroundColor: accColor }]}>
+                        <Text style={[styles.accuracyChipText, { color: onAccent(accColor) }]}>{fmt(s.avg_accuracy)}</Text>
                       </View>
                     </Box>
                   );
@@ -226,18 +231,17 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   chipActive: { backgroundColor: Accents.primary, borderColor: Accents.primary },
-  chipLabel: { color: Accents.primary, fontWeight: '700', fontSize: 13 },
-  chipLabelActive: { color: Nord.nord6 },
+  chipLabel: { fontWeight: '700', fontSize: 13 },
   statsRow: { flexDirection: 'row', gap: 10, marginTop: 4 },
-  statValue: { fontSize: 22, fontWeight: '800', color: Accents.primary },
+  statValue: { fontSize: 22, fontWeight: '800' },
   sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   sectionTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
   pctBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, overflow: 'hidden' },
-  pctBadgeText: { color: Nord.nord6, fontWeight: '800', fontSize: 14 },
+  pctBadgeText: { fontWeight: '800', fontSize: 14 },
   barTrack: { height: 8, borderRadius: 4, backgroundColor: Accents.track },
   barFill: { height: 8, borderRadius: 4 },
   avatar: {},
-  avatarText: { color: Nord.nord6, fontSize: 15 },
+  avatarText: { fontSize: 15 },
   accuracyChip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
-  accuracyChipText: { color: Nord.nord6, fontWeight: '800', fontSize: 13 },
+  accuracyChipText: { fontWeight: '800', fontSize: 13 },
 });

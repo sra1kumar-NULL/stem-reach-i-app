@@ -9,7 +9,8 @@ import { Avatar, AvatarFallbackText } from '@/components/ui/avatar';
 import { Box } from '@/components/ui/box';
 import { Heading } from '@/components/ui/heading';
 import { Text as UIText } from '@/components/ui/text';
-import { Accents, Nord, Type } from '@/constants/theme';
+import { Accents, Nord, onAccent, Type } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import type { ParticipationReport } from '@stemreach/core';
 
 const AVATAR_COLORS = [Nord.nord15, Nord.nord7, Nord.nord12, Nord.nord10, Nord.nord13, Nord.nord11];
@@ -33,6 +34,7 @@ interface Row {
 
 export default function ParticipationScreen() {
   const [date] = useState(() => new Date().toISOString().slice(0, 10));
+  const theme = useTheme();
   const [report, setReport] = useState<ParticipationReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -64,12 +66,12 @@ export default function ParticipationScreen() {
   const completedCount = report?.done.filter((s) => s.completed).length ?? 0;
 
   return (
-    <Box className="flex-1">
+    <Box className="flex-1 bg-background">
       <SafeAreaView style={styles.safe}>
         <View style={styles.headerRow}>
           <Link href="/(teacher)" style={styles.back}>
             <Ionicons name="chevron-back" size={22} color={Accents.primary} />
-            <UIText className="text-primary text-xl" style={Type.bodyBold}>
+            <UIText className="text-primary-text text-xl" style={Type.bodyBold}>
               Back
             </UIText>
           </Link>
@@ -91,29 +93,32 @@ export default function ParticipationScreen() {
             data={rows}
             keyExtractor={(r) => r.id}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Accents.primary} />}
-            renderItem={({ item, index }) => (
-              <Box className={`bg-card flex-row items-center gap-3 rounded-2xl p-3 ${!item.done ? 'opacity-70' : ''}`}>
-                <Avatar className="rounded-full" style={[styles.avatar, { backgroundColor: AVATAR_COLORS[index % AVATAR_COLORS.length] }]}>
-                  <AvatarFallbackText className="font-extrabold" style={styles.avatarText}>
-                    {initials(item.name)}
-                  </AvatarFallbackText>
-                </Avatar>
-                <Box className="flex-1 gap-0.5">
-                  <UIText className="text-foreground" style={Type.bodySemi}>
-                    {item.name}
-                  </UIText>
-                  <UIText className="text-xs text-muted-foreground" style={Type.body}>
-                    {item.done ? `${item.answered} answers` : 'not started yet'}
-                  </UIText>
+            renderItem={({ item, index }) => {
+              const avatarColor = AVATAR_COLORS[index % AVATAR_COLORS.length];
+              const chipBg = !item.done ? Nord.nord2 : item.completed ? Accents.success : Accents.warn;
+              const chipFg = onAccent(chipBg);
+              return (
+                <Box className={`bg-card flex-row items-center gap-3 rounded-2xl p-3 ${!item.done ? 'opacity-70' : ''}`}>
+                  <Avatar className="rounded-full" style={[styles.avatar, { backgroundColor: avatarColor }]}>
+                    <AvatarFallbackText className="font-extrabold" style={[styles.avatarText, { color: onAccent(avatarColor) }]}>
+                      {initials(item.name)}
+                    </AvatarFallbackText>
+                  </Avatar>
+                  <Box className="flex-1 gap-0.5">
+                    <UIText className="text-foreground" style={Type.bodySemi}>
+                      {item.name}
+                    </UIText>
+                    <UIText className="text-xs text-muted-foreground" style={Type.body}>
+                      {item.done ? `${item.answered} answers` : 'not started yet'}
+                    </UIText>
+                  </Box>
+                  <View style={[styles.statusChip, { backgroundColor: chipBg }]}>
+                    <Ionicons name={!item.done ? 'time-outline' : item.completed ? 'checkmark-circle' : 'play-circle'} size={12} color={chipFg} />
+                    <Text style={[styles.statusText, { color: chipFg }]}>{!item.done ? 'pending' : item.completed ? 'done' : 'in progress'}</Text>
+                  </View>
                 </Box>
-                <View
-                  style={[styles.statusChip, { backgroundColor: !item.done ? Nord.nord2 : item.completed ? Accents.success : Accents.warn }]}
-                >
-                  <Ionicons name={!item.done ? 'time-outline' : item.completed ? 'checkmark-circle' : 'play-circle'} size={12} color={Nord.nord6} />
-                  <Text style={styles.statusText}>{!item.done ? 'pending' : item.completed ? 'done' : 'in progress'}</Text>
-                </View>
-              </Box>
-            )}
+              );
+            }}
             ListHeaderComponent={
               <View style={styles.statsRow}>
                 {[
@@ -122,7 +127,7 @@ export default function ParticipationScreen() {
                   { value: String(report?.pending.length ?? 0), label: 'pending' },
                 ].map((chip) => (
                   <Box key={chip.label} className="bg-card flex-1 items-center rounded-2xl py-3 gap-0.5">
-                    <Text style={styles.statValue}>{chip.value}</Text>
+                    <Text style={[styles.statValue, { color: theme.primaryText }]}>{chip.value}</Text>
                     <UIText className="text-xs text-muted-foreground" style={Type.body}>
                       {chip.label}
                     </UIText>
@@ -143,9 +148,9 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   back: { paddingVertical: 4 },
   statsRow: { flexDirection: 'row', gap: 10, marginVertical: 12 },
-  statValue: { fontSize: 22, fontWeight: '800', color: Accents.primary },
+  statValue: { fontSize: 22, fontWeight: '800' },
   avatar: {},
-  avatarText: { color: Nord.nord6, fontSize: 15 },
+  avatarText: { fontSize: 15 },
   statusChip: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
-  statusText: { color: Nord.nord6, fontWeight: '800', fontSize: 12 },
+  statusText: { fontWeight: '800', fontSize: 12 },
 });

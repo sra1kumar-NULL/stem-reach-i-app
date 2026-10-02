@@ -4,17 +4,18 @@ import { Animated, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getMe } from '@/api/client';
+import { ConfirmSheet } from '@/components/confirm-sheet';
 import { Box } from '@/components/ui/box';
 import { Button, ButtonText } from '@/components/ui/button';
 import { Heading } from '@/components/ui/heading';
 import { Text as UIText } from '@/components/ui/text';
 import { Accents, Type } from '@/constants/theme';
-import { useAuth } from '@/state/auth';
+import { useConfirmSignOut } from '@/hooks/use-confirm-sign-out';
 import type { MeResponse } from '@stemreach/core';
 
 export default function SummaryScreen() {
   const { correct = '0', attempted = '0', streak = '0' } = useLocalSearchParams<{ correct: string; attempted: string; streak: string }>();
-  const { signOut } = useAuth();
+  const { confirmOut, signingOut, openConfirm, closeConfirm, confirmSignOut } = useConfirmSignOut();
   const [me, setMe] = useState<MeResponse | null>(null);
   const pop = useRef(new Animated.Value(0)).current;
 
@@ -36,7 +37,7 @@ export default function SummaryScreen() {
   }, [pop]);
 
   return (
-    <Box className="flex-1">
+    <Box className="flex-1 bg-background">
       <SafeAreaView style={styles.safe}>
         <Animated.Text style={[styles.hero, { transform: [{ scale: pop.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] }) }, { rotate: pop.interpolate({ inputRange: [0, 1], outputRange: ['-12deg', '0deg'] }) }] }]}>
           {hero}
@@ -90,11 +91,25 @@ export default function SummaryScreen() {
         <Button variant="default" size="lg" className="rounded-2xl self-stretch" onPress={() => router.replace('/')}>
           <ButtonText style={Type.bodyBold}>Back to home</ButtonText>
         </Button>
-        <Pressable onPress={() => signOut()} style={({ pressed }) => [styles.signoutPill, pressed && { opacity: 0.6 }]}>
+        <Pressable
+          onPress={openConfirm}
+          style={({ pressed }) => [styles.signoutPill, pressed && { opacity: 0.6 }]}
+          accessibilityRole="button"
+          accessibilityLabel="Sign out"
+        >
           <UIText className="text-muted-foreground font-semibold" style={Type.bodySemi}>
             ⏻ Sign out
           </UIText>
         </Pressable>
+        <ConfirmSheet
+          visible={confirmOut}
+          title="Sign out?"
+          message="You'll need to sign in again to continue."
+          confirmLabel="Sign out"
+          loading={signingOut}
+          onConfirm={confirmSignOut}
+          onCancel={closeConfirm}
+        />
       </SafeAreaView>
     </Box>
   );

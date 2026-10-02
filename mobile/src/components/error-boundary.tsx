@@ -26,7 +26,7 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.state.error == null) return this.props.children;
 
     return (
-      <Box className="flex-1 items-center justify-center p-8 gap-4">
+      <Box className="flex-1 items-center justify-center p-8 gap-4 bg-background">
         <Text style={styles.emoji}>😵‍💫</Text>
         <Heading className="text-center text-2xl" style={Type.heading}>
           Oops! Something went wrong

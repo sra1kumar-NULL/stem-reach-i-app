@@ -9,7 +9,7 @@ An npm-workspaces TypeScript monorepo.
 | Path | Role |
 |---|---|
 | `core/` | Contracts, Drizzle schema, content schemas — shared by `api`, `mobile`, `scripts` |
-| `api/` | Node 20 + Hono + Zod + Drizzle HTTP API. The only writer to business tables. |
+| `api/` | Node 22 + Hono + Zod + Drizzle HTTP API. The only writer to business tables. |
 | `mobile/` | Expo / React Native app — student feed + teacher dashboard, role-gated |
 | `scripts/` | Seed and verify CLI for the question bank and user creation |
 | `content/` | Version-controlled question bank JSON |

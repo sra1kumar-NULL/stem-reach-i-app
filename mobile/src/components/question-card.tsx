@@ -6,7 +6,7 @@ import { hapticError, hapticFlip, hapticLight, hapticSuccess } from '@/component
 import { Box } from '@/components/ui/box';
 import { Button, ButtonText } from '@/components/ui/button';
 import { Text as UIText } from '@/components/ui/text';
-import { Accents, Type } from '@/constants/theme';
+import { Accents, onAccent, Type } from '@/constants/theme';
 import type { QuestionDto, SelfEval, SubmissionResponse } from '@stemreach/core';
 
 interface Props {
@@ -72,6 +72,8 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
       onAnswered(res.is_correct);
       if (res.is_correct) hapticSuccess();
       else hapticError();
+    } catch {
+      hapticLight();
     } finally {
       setBusy(false);
     }
@@ -104,7 +106,7 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
           <View style={styles.metaRow}>
             <Box className={`rounded-full px-2.5 py-1 ${isMcq ? 'bg-primary-soft' : question.is_review ? 'bg-warn-soft' : 'bg-purple-soft'}`}>
               <UIText
-                className={`text-xs font-extrabold uppercase tracking-wide ${isMcq ? 'text-primary' : question.is_review ? 'text-warn' : 'text-purple'}`}
+                className={`text-xs font-extrabold uppercase tracking-wide ${isMcq ? 'text-primary-text' : question.is_review ? 'text-warn-text' : 'text-purple-text'}`}
                 style={Type.bodyBold}
               >
                 {isMcq ? '🤔 MCQ' : question.is_review ? '🔁 Review' : '✨ New'}
@@ -166,7 +168,7 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
                     <Text style={styles.feedbackEmoji}>{result.is_correct ? '🎉' : '💪'}</Text>
                     <Box className="flex-1 gap-0.5">
                       <UIText
-                        className={`text-base font-extrabold ${result.is_correct ? 'text-success' : 'text-danger'}`}
+                        className={`text-base font-extrabold ${result.is_correct ? 'text-success-text' : 'text-danger-text'}`}
                         style={Type.bodyBold}
                       >
                         {result.is_correct ? 'Correct! Great job' : 'Not quite — you learn every time'}
@@ -191,7 +193,7 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
                 ]}
               >
                 <Button variant="outline" size="lg" className="rounded-2xl bg-purple border-purple" onPress={doFlip} disabled={busy}>
-                  <ButtonText className="text-white" style={Type.bodyBold}>
+                  <ButtonText style={{ ...Type.bodyBold, color: onAccent(Accents.purple) }}>
                     👀 Show Answer
                   </ButtonText>
                 </Button>
@@ -213,10 +215,10 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
                       <ButtonText style={Type.bodyBold}>🔁 Again</ButtonText>
                     </Button>
                     <Button variant="default" className="flex-1 rounded-2xl bg-success" onPress={() => answerFlashcard('good')} disabled={busy}>
-                      <ButtonText style={Type.bodyBold}>👍 Good</ButtonText>
+                      <ButtonText style={{ ...Type.bodyBold, color: onAccent(Accents.success) }}>👍 Good</ButtonText>
                     </Button>
                     <Button variant="default" className="flex-1 rounded-2xl bg-teal" onPress={() => answerFlashcard('easy')} disabled={busy}>
-                      <ButtonText style={Type.bodyBold}>⚡ Easy</ButtonText>
+                      <ButtonText style={{ ...Type.bodyBold, color: onAccent(Accents.teal) }}>⚡ Easy</ButtonText>
                     </Button>
                   </View>
                 ) : (
@@ -229,7 +231,7 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
                       <Text style={styles.feedbackEmoji}>{result.is_correct ? '🧠' : '📚'}</Text>
                       <Box className="flex-1 gap-0.5">
                         <UIText
-                          className={`text-base font-extrabold ${result.is_correct ? 'text-success' : 'text-warn'}`}
+                          className={`text-base font-extrabold ${result.is_correct ? 'text-success-text' : 'text-warn-text'}`}
                           style={Type.bodyBold}
                         >
                           {result.is_correct ? 'Great recall!' : 'Added back for practice'}

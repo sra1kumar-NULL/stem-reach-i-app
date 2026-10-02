@@ -1,10 +1,15 @@
-// mobile/src/state/auth.tsx
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
-import { getMe, setAccessToken } from '@/api/client';
+import { getMe, markAuthInitialized, setAccessToken } from '@/api/client';
 import type { MeResponse } from '@stemreach/core';
+
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** Hard cap on how long `signOut()` waits for the remote logout — after this the
+ * local session is cleared anyway so the user always lands on the login screen. */
+const SIGN_OUT_TIMEOUT_MS = 4000;
 
 export const supabase: SupabaseClient = createClient(
   process.env.EXPO_PUBLIC_SUPABASE_URL ?? '',
@@ -19,10 +24,17 @@ export const supabase: SupabaseClient = createClient(
   },
 );
 
+/** Lifecycle of the post-sign-in `getMe()` fetch — `index.tsx` must not treat
+ * "still loading" or "temporarily failed" as "not authenticated". */
+export type MeStatus = 'idle' | 'loading' | 'ready' | 'error';
+
 interface AuthState {
   session: Session | null;
   me: MeResponse | null;
   loading: boolean;
+  meStatus: MeStatus;
+  signingOut: boolean;
+  retryMe: () => void;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -32,13 +44,28 @@ const AuthContext = createContext<AuthState | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [me, setMe] = useState<MeResponse | null>(null);
+  const [meStatus, setMeStatus] = useState<MeStatus>('idle');
   const [loading, setLoading] = useState(true);
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setLoading(false);
-    });
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        setSession(data.session);
+        // Publish the restored token synchronously so any apiFetch racing this
+        // restore (or a screen mounting in the next tick) still gets the header.
+        setAccessToken(data.session?.access_token ?? null);
+        setLoading(false);
+      })
+      .catch(() => {
+        // Restore failed — treat as signed out rather than spinning forever.
+        setLoading(false);
+      })
+      .finally(() => {
+        // Initial restore settled (session or none): release waiting apiFetches.
+        markAuthInitialized();
+      });
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
       setSession(next);
@@ -51,34 +78,83 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const token = session?.access_token;
 
-  useEffect(() => {
+  const loadMe = useCallback(async () => {
     if (!token) return;
-    setAccessToken(token);
-    getMe()
-      .then(setMe)
-      .catch(() => setMe(null));
+    setMeStatus('loading');
+    try {
+      const m = await getMe();
+      setMe(m);
+      setMeStatus('ready');
+    } catch {
+      // API unreachable / cold start — keep the session and surface a retry
+      // instead of bouncing a signed-in user back to the login form.
+      setMe(null);
+      setMeStatus('error');
+    }
   }, [token]);
+
+  useEffect(() => {
+    if (!token) {
+      setMe(null);
+      setMeStatus('idle');
+      return;
+    }
+    setAccessToken(token);
+    void loadMe();
+  }, [token, loadMe]);
+
+  const retryMe = useCallback(() => {
+    void loadMe();
+  }, [loadMe]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw new Error(error.message);
-    router.replace('/'); // Ensure this navigates to the home screen
   }, []);
 
   const signOut = useCallback(async () => {
+    setSigningOut(true);
     try {
-      await supabase.auth.signOut();
+      // Cap the remote logout: a hung Supabase call must never freeze the UI.
+      // The race attaches handlers to both promises, so a late rejection of the
+      // loser is swallowed too — signOut() can never reject.
+      await Promise.race([supabase.auth.signOut(), delay(SIGN_OUT_TIMEOUT_MS)]);
     } catch {
-      // even if the remote sign-out fails, clear the local session below
+      // Remote failure or timeout is swallowed — the user signs out locally anyway.
+    } finally {
+      // auth-js only removes the persisted AsyncStorage session AFTER the remote
+      // /logout settles — and in the installed @supabase/auth-js 2.111.0 even
+      // `signOut({ scope: 'local' })` does not skip the network: `_signOut`
+      // (src/GoTrueClient.ts) calls `admin.signOut(accessToken, scope)`, which
+      // is a real `POST /logout?scope=local` (src/GoTrueAdminApi.ts), and only
+      // then runs `_removeSession()`. A hung remote would therefore leave the
+      // stored session behind and restore it on the next cold start — so drop
+      // the same keys `_removeSession` clears, straight through the storage
+      // adapter, with no network involved. Idempotent when the remote call
+      // already won, and nothing can resurrect the session afterwards because
+      // every session read (`__loadSession`) goes to storage first.
+      try {
+        // auth-js keeps the key as a protected field (`sb-<project-ref>-auth-token`
+        // as defaulted by supabase-js); read it off the live client so it always
+        // matches what the client actually wrote.
+        const key = (supabase.auth as unknown as { storageKey: string }).storageKey;
+        await AsyncStorage.multiRemove([key, `${key}-user`]);
+      } catch {
+        // Best effort: the in-memory auth state below is cleared regardless.
+      }
+      setSession(null);
+      setMe(null);
+      setAccessToken(null);
+      // Logged-out state: `index.tsx` redirects on !session before it reads
+      // meStatus, and 'idle' is what the no-token effect converges on anyway.
+      setMeStatus('idle');
+      setSigningOut(false);
     }
-    setSession(null);
-    setMe(null);
-    setAccessToken(null);
   }, []);
 
   const value = useMemo(
-    () => ({ session, me, loading, signIn, signOut }),
-    [session, me, loading, signIn, signOut],
+    () => ({ session, me, loading, meStatus, signingOut, retryMe, signIn, signOut }),
+    [session, me, loading, meStatus, signingOut, retryMe, signIn, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

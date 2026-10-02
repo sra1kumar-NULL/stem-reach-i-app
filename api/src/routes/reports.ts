@@ -4,11 +4,10 @@ import { dailySetSections, dailySets, profiles, questions, reviewStates, section
 import { requireRole } from "../lib/auth.js";
 import type { AppContext } from "../lib/http.js";
 import { badRequest } from "../lib/http.js";
-import type { ParticipationReport, PerformanceReport } from "@stemreach/core";
+import { DAILY_PER_SECTION, type ParticipationReport, type PerformanceReport } from "@stemreach/core";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const DAILY_PER_SECTION = 5;
 
 export function routes(ctx: AppContext): Hono {
   const app = new Hono();
@@ -30,10 +29,21 @@ export function routes(ctx: AppContext): Hono {
       )
       .orderBy(profiles.fullName);
 
-    const subs = await ctx.db
-      .select({ studentId: submissions.studentId, questionId: submissions.questionId })
-      .from(submissions)
-      .where(eq(submissions.dailySetId, set.id));
+    const activated = await ctx.db
+      .select({ sectionId: dailySetSections.sectionId })
+      .from(dailySetSections)
+      .where(eq(dailySetSections.dailySetId, set.id));
+    const activatedIds = activated.map((a) => a.sectionId);
+
+    // Count only answers to the day's activated sections so participation
+    // matches feed progress (answers to de-selected sections never counted).
+    const subs = activatedIds.length
+      ? await ctx.db
+          .select({ studentId: submissions.studentId, questionId: submissions.questionId })
+          .from(submissions)
+          .innerJoin(questions, eq(questions.id, submissions.questionId))
+          .where(and(eq(submissions.dailySetId, set.id), inArray(questions.sectionId, activatedIds)))
+      : [];
 
     const perStudent = new Map<string, Set<string>>();
     for (const s of subs) {
@@ -41,12 +51,6 @@ export function routes(ctx: AppContext): Hono {
       ids.add(s.questionId);
       perStudent.set(s.studentId, ids);
     }
-
-    const activated = await ctx.db
-      .select({ sectionId: dailySetSections.sectionId })
-      .from(dailySetSections)
-      .where(eq(dailySetSections.dailySetId, set.id));
-    const activatedIds = activated.map((a) => a.sectionId);
 
     // Day's target per section is min(5, enabled questions) — must match the feed.
     const enabledCounts = activatedIds.length
@@ -128,7 +132,7 @@ export function routes(ctx: AppContext): Hono {
     const body: PerformanceReport = {
       per_section: rows.map((r) => ({ section_id: r.sectionId, section_no: r.sectionNo, name: r.name, attempts: r.attempts, accuracy: Number(r.accuracy) })),
       per_student: studentRows.map((r) => ({ id: r.id, name: r.name, avg_accuracy: Number(r.avgAccuracy), questions_answered: r.questionsAnswered })),
-      srs: await srsStats(ctx, today()),
+      srs: await srsStats(ctx, today(), sectionId),
     };
     return c.json(body);
   });
@@ -140,8 +144,12 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-/** Class-wide spaced-repetition health (all students combined). */
-async function srsStats(ctx: AppContext, today: string) {
+/**
+ * Class-wide spaced-repetition health (all students combined).
+ * All-time snapshot: `from`/`to` are intentionally not applied here; scoped to
+ * `sectionId` when provided.
+ */
+async function srsStats(ctx: AppContext, today: string, sectionId?: string) {
   const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
   const [row] = await ctx.db
     .select({
@@ -150,7 +158,9 @@ async function srsStats(ctx: AppContext, today: string) {
       learned: sql<number>`count(*) filter (where ${reviewStates.repetitions} >= 2 and ${reviewStates.intervalDays} > 0)::int`,
       reviewed: sql<number>`count(*)::int`,
     })
-    .from(reviewStates);
+    .from(reviewStates)
+    .innerJoin(questions, eq(questions.id, reviewStates.questionId))
+    .where(sectionId ? eq(questions.sectionId, sectionId) : undefined);
   return {
     due_today: row?.dueToday ?? 0,
     due_tomorrow: row?.dueTomorrow ?? 0,

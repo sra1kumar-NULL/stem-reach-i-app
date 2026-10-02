@@ -3,11 +3,8 @@ import { and, eq, inArray, lte, notInArray, sql } from "drizzle-orm";
 import { dailySetSections, dailySets, sections, chapters, questions, reviewStates, submissions } from "@stemreach/core/db/schema";
 import { requireRole } from "../lib/auth.js";
 import type { AppContext } from "../lib/http.js";
-import { badRequest } from "../lib/http.js";
-import type { FeedResponse, ProgressDto, QuestionDto } from "@stemreach/core";
+import { DAILY_PER_SECTION, type FeedResponse, type ProgressDto, type QuestionDto } from "@stemreach/core";
 
-/** Daily dose: up to this many unanswered questions per activated section. */
-const DAILY_PER_SECTION = 5;
 /** Hard cap on the whole daily queue (reviews take priority). */
 const MAX_QUEUE = 30;
 
@@ -85,6 +82,14 @@ export function routes(ctx: AppContext): Hono {
     }
 
     // 2) New cards fill the remaining per-section caps.
+    // "New" means never seen by spaced repetition: exclude every question the student
+    // has an SRS row for (due today, due in the future, or beyond the dueRows limit),
+    // not just the ones fetched above.
+    const srsRows = await ctx.db
+      .select({ questionId: reviewStates.questionId })
+      .from(reviewStates)
+      .where(eq(reviewStates.studentId, studentId));
+    const newExclude = [...new Set([...srsRows.map((r) => r.questionId), ...answeredIds])];
     const reviewQuestionIds = dueRows.map((r) => r.question.id);
     const seenIds = [...answeredIds, ...reviewQuestionIds];
     const newPool = await ctx.db
@@ -95,9 +100,10 @@ export function routes(ctx: AppContext): Hono {
           eq(questions.enabled, true),
           eq(questions.qtype, "flashcard"),
           inArray(questions.sectionId, sectionIds),
-          seenIds.length > 0 ? notInArray(questions.id, seenIds) : undefined,
+          newExclude.length > 0 ? notInArray(questions.id, newExclude) : undefined,
         ),
-      );
+      )
+      .orderBy(sql`random()`);
 
     const remainingBySection = new Map<string, number>();
     for (const sectionId of sectionIds) {
@@ -111,11 +117,11 @@ export function routes(ctx: AppContext): Hono {
     const newSelected = new Set<string>();
     if (remainingBySection.size > 0 && sampled.length < MAX_QUEUE) {
       for (const sectionId of remainingBySection.keys()) {
+        if (sampled.length >= MAX_QUEUE) break;
         const cap = remainingBySection.get(sectionId) ?? 0;
         const candidates = newPool
           .filter((q) => q.sectionId === sectionId && !queuedIds.has(q.id))
-          .sort(() => Math.random() - 0.5)
-          .slice(0, cap);
+          .slice(0, Math.min(cap, MAX_QUEUE - sampled.length));
         for (const q of candidates) {
           sampled.push({ question: q, isReview: false });
           queuedIds.add(q.id);
@@ -136,18 +142,17 @@ export function routes(ctx: AppContext): Hono {
             inArray(questions.sectionId, sectionIds),
             seenIds.length > 0 ? notInArray(questions.id, seenIds) : undefined,
           ),
-        );
+        )
+        .orderBy(sql`random()`);
       for (const sectionId of remainingBySection.keys()) {
+        if (sampled.length >= MAX_QUEUE) break;
         const answeredCount = answeredBySection.get(sectionId) ?? 0;
-        const reviewCount = sampled.filter((s) => s.question.sectionId === sectionId).length;
-        const newCount = sampled.filter((s) => s.question.sectionId === sectionId && !s.isReview).length;
-        const cap = Math.max(0, (targetPerSection.get(sectionId) ?? 0) - answeredCount - reviewCount);
-        const filled = Math.max(0, cap - newCount);
-        if (filled === 0 || sampled.length >= MAX_QUEUE) continue;
+        const queuedCount = sampled.filter((s) => s.question.sectionId === sectionId).length;
+        const filled = Math.max(0, (targetPerSection.get(sectionId) ?? 0) - answeredCount - queuedCount);
+        if (filled === 0) continue;
         const candidates = mcqPool
           .filter((q) => q.sectionId === sectionId && !queuedIds.has(q.id))
-          .sort(() => Math.random() - 0.5)
-          .slice(0, filled);
+          .slice(0, Math.min(filled, MAX_QUEUE - sampled.length));
         for (const q of candidates) {
           sampled.push({ question: q, isReview: false });
           queuedIds.add(q.id);
@@ -169,7 +174,18 @@ export function routes(ctx: AppContext): Hono {
     const progress: ProgressDto = {
       answered: answeredIds.size,
       total,
-      completed: answeredIds.size >= total,
+      // Completed means "nothing left to serve today": the queue built above
+      // is empty. `answeredIds.size >= total` is NOT that test — `total` is
+      // only the per-section dose (DAILY_PER_SECTION each) while due reviews
+      // are uncapped up to MAX_QUEUE, so a student who met the target but
+      // still had due reviews queued was flagged completed and bounced to
+      // /summary on their next load, skipping those reviews. The queue is
+      // exactly what this route serves next: when it is empty, due reviews are
+      // done (or none are due) and no new/MCQ cards remain to fill the caps —
+      // including the case where the pools are exhausted before the target is
+      // met (an empty feed with completed:false would strand the student).
+      // answered/total keep their real values; the app clamps them for display.
+      completed: sampled.length === 0,
     };
 
     const body: FeedResponse = {

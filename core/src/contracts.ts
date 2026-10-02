@@ -17,6 +17,38 @@ export type Language = z.infer<typeof LANGUAGE>;
 export const SUBJECT = z.enum(["physics", "chemistry", "biology", "general"]);
 export type Subject = z.infer<typeof SUBJECT>;
 
+// ── Canonical authored-question shape (shared by seed content & teacher input) ──
+
+/**
+ * The fields every question has, regardless of who authored it. `content/*.json`
+ * (SeedQuestion) and teacher API input (CreateQuestionRequest) are both built from
+ * this object so a teacher-created question is validated exactly like a seed one.
+ */
+export const AuthoredQuestion = z.object({
+  type: QUESTION_TYPE,
+  difficulty: DIFFICULTY.default("medium"),
+  language: LANGUAGE.default("en"),
+  text: z.string().min(1),
+  options: z.array(z.string().min(1)).length(4).optional(),
+  correct: z.number().int().min(0).max(3).optional(),
+  answer: z.string().min(1).optional(),
+  explanation: z.string().min(1),
+});
+export type AuthoredQuestion = z.infer<typeof AuthoredQuestion>;
+
+export const AUTHORED_QUESTION_RULE =
+  "mcq requires options[4] + correct; flashcard requires answer and no options";
+
+/** Shared refine rule for AuthoredQuestion — keep seed and teacher validation identical. */
+export function authoredQuestionOk(
+  q: Pick<AuthoredQuestion, "type" | "options" | "correct" | "answer">,
+): boolean {
+  return (
+    (q.type === "mcq" && q.options != null && q.correct != null) ||
+    (q.type === "flashcard" && q.answer != null && q.options == null)
+  );
+}
+
 /**
  * Flashcard self-eval grades (Anki-style). `got_it`/`need_practice` are legacy
  * values; the API normalizes new grades into them for storage, while the SRS
@@ -29,6 +61,9 @@ export type SelfEval = z.infer<typeof SELF_EVAL>;
 export function selfEvalIsCorrect(grade: SelfEval): boolean {
   return grade === "got_it" || grade === "good" || grade === "easy";
 }
+
+/** Daily dose: up to this many unanswered questions per activated section. Shared by feed, submissions, and reports. */
+export const DAILY_PER_SECTION = 5;
 
 // ── Entities (API response shapes) ──────────────────────────────────────────
 
@@ -66,6 +101,24 @@ export const ProgressDto = z.object({
 });
 export type ProgressDto = z.infer<typeof ProgressDto>;
 
+/** Full question row as returned to its authoring teacher (create/list). */
+export const TeacherQuestionDto = z.object({
+  id: z.string().uuid(),
+  section_id: z.string().uuid(),
+  type: QUESTION_TYPE,
+  language: LANGUAGE,
+  difficulty: DIFFICULTY,
+  question_text: z.string(),
+  options: z.array(z.string()).nullable(),
+  answer: z.string().nullable(),
+  explanation: z.string().nullable(),
+  enabled: z.boolean(),
+  /** Null for seed-authored questions. */
+  created_by: z.string().uuid().nullable(),
+  created_at: z.string(),
+});
+export type TeacherQuestionDto = z.infer<typeof TeacherQuestionDto>;
+
 // ── Requests ────────────────────────────────────────────────────────────────
 
 export const SubmissionRequest = z
@@ -85,6 +138,25 @@ export const ActivateRequest = z.object({
   section_ids: z.array(z.string().uuid()).min(1),
 });
 export type ActivateRequest = z.infer<typeof ActivateRequest>;
+
+/** POST /api/questions — teacher-authored question. Canonical SeedQuestion shape + section target. */
+export const CreateQuestionRequest = AuthoredQuestion.extend({
+  section_id: z.string().uuid(),
+}).refine(authoredQuestionOk, { message: AUTHORED_QUESTION_RULE });
+export type CreateQuestionRequest = z.infer<typeof CreateQuestionRequest>;
+
+/** DELETE /api/questions/:id — params only; ownership is derived from the verified token. */
+export const DeleteQuestionParams = z.object({
+  id: z.string().uuid(),
+});
+export type DeleteQuestionParams = z.infer<typeof DeleteQuestionParams>;
+
+/** GET /api/questions?section_id=&mine=true — optional list filters. */
+export const ListQuestionsQuery = z.object({
+  section_id: z.string().uuid().optional(),
+  mine: z.enum(["true", "false"]).optional(),
+});
+export type ListQuestionsQuery = z.infer<typeof ListQuestionsQuery>;
 
 // ── Responses ───────────────────────────────────────────────────────────────
 
@@ -191,9 +263,21 @@ export const PerformanceReport = z.object({
     z.object({ section_id: z.string().uuid(), section_no: z.string(), name: z.string(), attempts: z.number().int(), accuracy: z.number().min(0).max(1) }),
   ),
   per_student: z.array(z.object({ id: z.string().uuid(), name: z.string(), avg_accuracy: z.number().min(0).max(1), questions_answered: z.number().int() })),
+  /** Class-wide SRS health. All-time snapshot — not filtered by from/to; scoped to section_id when provided. */
   srs: SrsStatsDto,
 });
 export type PerformanceReport = z.infer<typeof PerformanceReport>;
+
+export const CreateQuestionResponse = TeacherQuestionDto;
+export type CreateQuestionResponse = z.infer<typeof CreateQuestionResponse>;
+
+export const DeleteQuestionResponse = z.object({ ok: z.literal(true) });
+export type DeleteQuestionResponse = z.infer<typeof DeleteQuestionResponse>;
+
+export const ListQuestionsResponse = z.object({
+  questions: z.array(TeacherQuestionDto),
+});
+export type ListQuestionsResponse = z.infer<typeof ListQuestionsResponse>;
 
 export const ApiError = z.object({
   error: z.object({ code: z.string(), message: z.string() }),

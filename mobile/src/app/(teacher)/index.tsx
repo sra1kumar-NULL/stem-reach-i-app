@@ -5,6 +5,7 @@ import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from '
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { activate, getActivations, getSyllabus } from '@/api/client';
+import { ConfirmSheet } from '@/components/confirm-sheet';
 import {
   AlertDialog,
   AlertDialogBackdrop,
@@ -17,9 +18,11 @@ import { Box } from '@/components/ui/box';
 import { Button, ButtonText } from '@/components/ui/button';
 import { Heading } from '@/components/ui/heading';
 import { Text as UIText } from '@/components/ui/text';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { useToast } from '@/components/toast';
 import { Accents, Nord, Type } from '@/constants/theme';
-import { useAuth } from '@/state/auth';
+import { useConfirmSignOut } from '@/hooks/use-confirm-sign-out';
+import { useTheme } from '@/hooks/use-theme';
 import type { SyllabusResponse } from '@stemreach/core';
 
 interface Row {
@@ -30,8 +33,9 @@ interface Row {
 }
 
 export default function ActivateScreen() {
-  const { signOut } = useAuth();
+  const { confirmOut, signingOut, openConfirm, closeConfirm, confirmSignOut } = useConfirmSignOut();
   const { showToast } = useToast();
+  const theme = useTheme();
   const [syllabus, setSyllabus] = useState<SyllabusResponse | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [todaySections, setTodaySections] = useState<Set<string>>(new Set());
@@ -112,16 +116,24 @@ export default function ActivateScreen() {
   };
 
   return (
-    <Box className="flex-1">
+    <Box className="flex-1 bg-background">
       <SafeAreaView style={styles.safe}>
         <View style={styles.headerRow}>
           <Heading className="text-2xl" style={Type.heading}>
             Today&apos;s Revision
           </Heading>
-          <Pressable onPress={() => signOut()} style={({ pressed }) => [styles.signoutBtn, pressed && { opacity: 0.6 }]}>
-            <Ionicons name="log-out-outline" size={14} color={Nord.nord4} />
-            <Text style={styles.signoutText}>Sign out</Text>
-          </Pressable>
+          <View style={styles.headerActions}>
+            <ThemeToggle />
+            <Pressable
+              onPress={openConfirm}
+              style={({ pressed }) => [styles.signoutBtn, pressed && { opacity: 0.6 }]}
+              accessibilityRole="button"
+              accessibilityLabel="Sign out"
+            >
+              <Ionicons name="log-out-outline" size={14} color={theme.text} />
+              <Text style={[styles.signoutText, { color: theme.text }]}>Sign out</Text>
+            </Pressable>
+          </View>
         </View>
 
         <UIText className="text-sm text-muted-foreground" style={Type.body}>
@@ -155,7 +167,7 @@ export default function ActivateScreen() {
                     <UIText className="flex-1 text-base font-bold text-foreground" style={Type.bodyBold}>
                       {chapter.name}
                     </UIText>
-                    <Text style={[styles.check, { color: allOn ? Accents.success : Accents.border }]}>{allOn ? '✓' : '—'}</Text>
+                    <Text style={[styles.check, { color: allOn ? theme.successText : Accents.border }]}>{allOn ? '✓' : '—'}</Text>
                   </Pressable>
                   <Box className="gap-2 pl-4">
                     {chapter.sections.map((s) => {
@@ -176,7 +188,7 @@ export default function ActivateScreen() {
                               {s.enabled_question_count} questions{wasToday && !isOn ? ' · was active today' : ''}
                             </UIText>
                           </Box>
-                          <Text style={[styles.check, { color: isOn ? Accents.success : 'transparent' }]}>✓</Text>
+                          <Text style={[styles.check, { color: isOn ? theme.successText : 'transparent' }]}>✓</Text>
                         </Pressable>
                       );
                     })}
@@ -208,19 +220,29 @@ export default function ActivateScreen() {
           <View style={styles.navRow}>
             <Link href="/(teacher)/participation" style={styles.navLink}>
               <Ionicons name="people-outline" size={16} color={Accents.primary} />
-              <UIText className="text-primary font-bold" style={Type.bodyBold}>
+              <UIText className="text-primary-text font-bold" style={Type.bodyBold}>
                 Participation
               </UIText>
             </Link>
             <Link href="/(teacher)/reports" style={styles.navLink}>
               <Ionicons name="bar-chart-outline" size={16} color={Accents.primary} />
-              <UIText className="text-primary font-bold" style={Type.bodyBold}>
+              <UIText className="text-primary-text font-bold" style={Type.bodyBold}>
                 Performance
               </UIText>
             </Link>
           </View>
         </Box>
       </SafeAreaView>
+
+      <ConfirmSheet
+        visible={confirmOut}
+        title="Sign out?"
+        message="You'll need to sign in again to continue."
+        confirmLabel="Sign out"
+        loading={signingOut}
+        onConfirm={confirmSignOut}
+        onCancel={closeConfirm}
+      />
 
       <AlertDialog isOpen={confirmOpen} onClose={() => setConfirmOpen(false)}>
         <AlertDialogBackdrop onPress={() => setConfirmOpen(false)} />
@@ -254,6 +276,7 @@ export default function ActivateScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, padding: 16, gap: 12 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   signoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -264,7 +287,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
-  signoutText: { color: Nord.nord4, fontSize: 13, fontWeight: '600' },
+  signoutText: { fontSize: 13, fontWeight: '600' },
   chapterHead: {
     flexDirection: 'row',
     alignItems: 'center',

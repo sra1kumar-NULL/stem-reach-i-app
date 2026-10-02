@@ -1,4 +1,3 @@
-// mobile/src/app/login.tsx
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -6,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, KeyboardAvoidingView, Platform, Pressable, type DimensionValue } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Fonts } from '@/constants/theme';
+import { Fonts, Nord } from '@/constants/theme';
 import { useAuth } from '@/state/auth';
 import { useTheme } from '@/hooks/use-theme';
 import { Box } from '@/components/ui/box';
@@ -16,10 +15,10 @@ import { Input, InputField } from '@/components/ui/input';
 import { Text } from '@/components/ui/text';
 
 const DECOR: { icon: string; color: string; top?: DimensionValue; left?: DimensionValue; right?: DimensionValue; bottom?: DimensionValue; size: number; rot: string }[] = [
-  { icon: 'book-outline', color: '#81A1C1', top: '12%', left: '12%', size: 40, rot: '-15deg' },
-  { icon: 'school-outline', color: '#8FBCBB', top: '16%', right: '14%', size: 46, rot: '10deg' },
-  { icon: 'star-outline', color: '#EBCB8B', bottom: '28%', left: '16%', size: 34, rot: '0deg' },
-  { icon: 'flask-outline', color: '#B48EAD', bottom: '34%', right: '18%', size: 38, rot: '12deg' },
+  { icon: 'book-outline', color: Nord.nord9, top: '12%', left: '12%', size: 40, rot: '-15deg' },
+  { icon: 'school-outline', color: Nord.nord7, top: '16%', right: '14%', size: 46, rot: '10deg' },
+  { icon: 'star-outline', color: Nord.nord13, bottom: '28%', left: '16%', size: 34, rot: '0deg' },
+  { icon: 'flask-outline', color: Nord.nord15, bottom: '34%', right: '18%', size: 38, rot: '12deg' },
 ];
 
 export default function LoginScreen() {
@@ -140,7 +139,7 @@ export default function LoginScreen() {
             </Input>
 
             {error && (
-              <Text className="text-center text-danger text-sm" style={{ fontFamily: Fonts.sans }}>
+              <Text className="text-center text-danger-text text-sm" style={{ fontFamily: Fonts.sans }}>
                 {error}
               </Text>
             )}
@@ -153,7 +152,7 @@ export default function LoginScreen() {
               )}
             </Button>
             <Pressable onPress={() => router.push('/signup')} className="items-center py-1.5">
-              <Text className="text-primary text-sm font-bold" style={{ fontFamily: Fonts.sans }}>
+              <Text className="text-primary-text text-sm font-bold" style={{ fontFamily: Fonts.sans }}>
                 New here? Create an account
               </Text>
             </Pressable>

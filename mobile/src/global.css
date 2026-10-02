@@ -25,6 +25,15 @@
       --ring: 94 129 172;
       --accent: 216 222 233;
       --accent-foreground: 46 52 64;
+
+      /* Readable accent TEXT on Snow Storm surfaces (incl. the 16% soft tints).
+         Same Nord aurora hue & saturation, lightness lowered until ≥4.5:1 —
+         the raw aurora values only reach 1.2–2.8:1 on light backgrounds. */
+      --primary-text: 68 96 131;
+      --success-text: 82 107 61;
+      --warn-text: 132 96 23;
+      --danger-text: 156 63 72;
+      --purple-text: 126 83 118;
     }
 
     @variant dark {
@@ -45,6 +54,15 @@
       --ring: 136 192 208;
       --accent: 67 76 94;
       --accent-foreground: 236 239 244;
+
+      /* Readable accent TEXT on Polar Night surfaces (incl. the 16% soft tints).
+         Same Nord aurora hue & saturation, lightness raised until ≥4.5:1 —
+         raw nord10/nord11/nord15 only reach 2.1–2.9:1 on dark backgrounds. */
+      --primary-text: 171 189 211;
+      --success-text: 186 206 169;
+      --warn-text: 235 203 139;
+      --danger-text: 222 173 178;
+      --purple-text: 210 187 205;
     }
   }
 }
@@ -86,11 +104,22 @@
   --color-danger-soft: #BF616A29;
   --color-purple-soft: #B48EAD29;
 
+  /* Readable accent foregrounds (text) — per-variant, see @variant blocks above.
+     Use `text-success-text` etc. for accent-colored text; `bg-success`/`border-success`
+     keep the base aurora fill. Mirrored in Colors.*Text in constants/theme.ts. */
+  --color-primary-text: rgb(var(--primary-text));
+  --color-success-text: rgb(var(--success-text));
+  --color-warn-text: rgb(var(--warn-text));
+  --color-danger-text: rgb(var(--danger-text));
+  --color-purple-text: rgb(var(--purple-text));
+
   /* Kid-friendly fonts (web): Nunito body, Fredoka headings */
-  --font-sans: Nunito, ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-    'Segoe UI Symbol', 'Noto Color Emoji';
-  --font-rounded: Fredoka, 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
-    monospace;
-  --font-serif: Georgia, 'Times New Roman', serif;
+  /* Font stacks must be single-line, quote-free: uniwind 1.11's CSS serializer strips
+     quotes and mangles quoted/multi-line stacks into broken JS (`Nunitoui - sans-serif...`),
+     which crashes native builds with `ReferenceError: Property 'Nunitoui' doesn't exist`.
+     OS/browser font fallback still covers emoji and missing glyphs. */
+  --font-sans: Nunito, ui-sans-serif, system-ui, sans-serif;
+  --font-rounded: Fredoka, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-serif: Georgia, serif;
 }

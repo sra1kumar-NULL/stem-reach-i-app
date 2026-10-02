@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import { and, eq, gte, lte, sql } from "drizzle-orm";
-import { reviewStates, streaks, submissions } from "@stemreach/core/db/schema";
+import { and, eq, inArray, lte, sql } from "drizzle-orm";
+import { dailySetSections, dailySets, questions, reviewStates, streaks, submissions } from "@stemreach/core/db/schema";
 import type { AppContext } from "../lib/http.js";
 import type { MeResponse } from "@stemreach/core";
 
@@ -22,9 +22,36 @@ export function routes(ctx: AppContext): Hono {
       .from(submissions)
       .where(eq(submissions.studentId, user.id));
 
+    // due_today mirrors the feed: only enabled questions in today's activated
+    // set can actually be served as due cards.
+    const [set] = await ctx.db.select({ id: dailySets.id }).from(dailySets).where(eq(dailySets.setDate, today)).limit(1);
+    const setSections = set
+      ? await ctx.db
+          .select({ sectionId: dailySetSections.sectionId })
+          .from(dailySetSections)
+          .where(eq(dailySetSections.dailySetId, set.id))
+      : [];
+    const sectionIds = setSections.map((s) => s.sectionId);
+
+    let dueToday = 0;
+    if (sectionIds.length > 0) {
+      const [due] = await ctx.db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(reviewStates)
+        .innerJoin(questions, eq(questions.id, reviewStates.questionId))
+        .where(
+          and(
+            eq(reviewStates.studentId, user.id),
+            lte(reviewStates.dueDate, today),
+            eq(questions.enabled, true),
+            inArray(questions.sectionId, sectionIds),
+          ),
+        );
+      dueToday = due?.count ?? 0;
+    }
+
     const [srs] = await ctx.db
       .select({
-        dueToday: sql<number>`count(*) filter (where ${reviewStates.dueDate} <= ${today})::int`,
         dueTomorrow: sql<number>`count(*) filter (where ${reviewStates.dueDate} = ${tomorrow})::int`,
         learned: sql<number>`count(*) filter (where ${reviewStates.repetitions} >= 2 and ${reviewStates.intervalDays} > 0)::int`,
         reviewed: sql<number>`count(*)::int`,
@@ -49,7 +76,7 @@ export function routes(ctx: AppContext): Hono {
         accuracy: totals?.accuracy ?? 0,
       },
       srs: {
-        due_today: srs?.dueToday ?? 0,
+        due_today: dueToday,
         due_tomorrow: srs?.dueTomorrow ?? 0,
         learned: srs?.learned ?? 0,
         reviewed: srs?.reviewed ?? 0,

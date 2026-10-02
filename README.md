@@ -8,7 +8,7 @@ Fully white-label: no school-specific branding anywhere, so any school can adopt
 
 **Docs (start here):**
 - [Architecture](docs/ARCHITECTURE.md) — short orientation: system shape, flows, stack
-- [Deployment guide](DEPLOY.md) — how to host the API + web app + Android APK
+- [Deployment guide](docs/DEPLOY.md) — how to host the API + web app + Android APK
 - [PRD](docs/01-PRD.md) — product intent + curriculum
 - [HLD](docs/03-HLD.md) — architecture, flows, decisions
 - [LLD](docs/04-LLD.md) — schema, API contract, screens
