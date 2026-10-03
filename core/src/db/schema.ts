@@ -5,6 +5,8 @@ export const profiles = pgTable("profiles", {
   fullName: text("full_name").notNull(),
   role: text("role", { enum: ["student", "teacher"] }).notNull(),
   classSection: text("class_section"),
+  /** Student's preferred question language; `both` serves English and Kannada. */
+  questionLanguage: text("question_language", { enum: ["en", "kn", "both"] }).notNull().default("en"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 export type Profile = typeof profiles.$inferSelect;
@@ -47,12 +49,33 @@ export const questions = pgTable(
     explanation: text("explanation"),
     difficulty: text("difficulty", { enum: ["easy", "medium", "hard"] }).notNull().default("medium"),
     enabled: boolean("enabled").notNull().default(true),
+    /** `draft` questions are never served to students. */
+    status: text("status", { enum: ["draft", "published"] }).notNull().default("published"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     /** Author provenance: set from the verified token for teacher-created questions;
      *  null for rows loaded from content/ by the seed script. Nullable — existing rows stay valid. */
     createdBy: uuid("created_by").references(() => profiles.id),
+    /** Set on every teacher edit; the seed script skips rows where this is non-null unless --force. */
+    editedAt: timestamp("edited_at", { withTimezone: true }),
+    updatedBy: uuid("updated_by").references(() => profiles.id),
   },
   (t) => [uniqueIndex("questions_section_text_unique").on(t.sectionId, t.questionText), index("idx_questions_section").on(t.sectionId)],
+);
+
+/** Pre-edit snapshots of a question (one row per teacher edit). */
+export const questionRevisions = pgTable(
+  "question_revisions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    questionId: uuid("question_id")
+      .notNull()
+      .references(() => questions.id, { onDelete: "cascade" }),
+    revisionNo: integer("revision_no").notNull(),
+    snapshot: jsonb("snapshot").$type<Record<string, unknown>>().notNull(),
+    editedBy: uuid("edited_by").references(() => profiles.id),
+    editedAt: timestamp("edited_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("question_revisions_question_no_unique").on(t.questionId, t.revisionNo)],
 );
 
 export const dailySets = pgTable(
@@ -137,4 +160,20 @@ export const reviewStates = pgTable(
     primaryKey({ columns: [t.studentId, t.questionId] }),
     index("idx_review_states_due").on(t.dueDate),
   ],
+);
+
+/** Audit trail of teacher-initiated student password resets. Never holds the password. */
+export const passwordResets = pgTable(
+  "password_resets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    studentId: uuid("student_id")
+      .notNull()
+      .references(() => profiles.id),
+    resetBy: uuid("reset_by")
+      .notNull()
+      .references(() => profiles.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("idx_password_resets_student").on(t.studentId)],
 );

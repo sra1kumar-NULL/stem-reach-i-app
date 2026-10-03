@@ -57,7 +57,7 @@ export function routes(ctx: AppContext): Hono {
       ? await ctx.db
           .select({ sectionId: questions.sectionId, count: sql<number>`count(*)::int` })
           .from(questions)
-          .where(and(eq(questions.enabled, true), inArray(questions.sectionId, activatedIds)))
+          .where(and(eq(questions.enabled, true), eq(questions.status, "published"), inArray(questions.sectionId, activatedIds)))
           .groupBy(questions.sectionId)
       : [];
     const target = enabledCounts.reduce((sum, r) => sum + Math.min(r.count, DAILY_PER_SECTION), 0);

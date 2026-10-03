@@ -1,8 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js';
+import { Platform } from 'react-native';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { getMe, markAuthInitialized, setAccessToken } from '@/api/client';
+import { toFriendlyError } from '@/lib/friendly-error';
+import { resetRedirectUrl } from '@/lib/auth-links';
 import type { MeResponse } from '@stemreach/core';
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -10,6 +13,11 @@ const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 /** Hard cap on how long `signOut()` waits for the remote logout — after this the
  * local session is cleared anyway so the user always lands on the login screen. */
 const SIGN_OUT_TIMEOUT_MS = 4000;
+
+/** URL fragment as it was when the page loaded (web only). Supabase puts recovery-link errors
+ * there and may clear it during client init, so it is captured before the client is created. */
+export const initialUrlHash: string =
+  Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.hash : '';
 
 export const supabase: SupabaseClient = createClient(
   process.env.EXPO_PUBLIC_SUPABASE_URL ?? '',
@@ -19,7 +27,8 @@ export const supabase: SupabaseClient = createClient(
       storage: AsyncStorage,
       autoRefreshToken: true,
       persistSession: true,
-      detectSessionInUrl: false,
+      // Web only: the password-reset email lands on /reset-password#access_token=…; native never parses URLs.
+      detectSessionInUrl: Platform.OS === 'web',
     },
   },
 );
@@ -35,7 +44,13 @@ interface AuthState {
   meStatus: MeStatus;
   signingOut: boolean;
   retryMe: () => void;
+  /** Replaces the cached /api/me (e.g. with the PATCH /api/me response) so every screen sees the change. */
+  applyMe: (next: MeResponse) => void;
   signIn: (email: string, password: string) => Promise<void>;
+  /** Emails a reset link. Resolves the same way whether or not the address has an account. */
+  requestPasswordReset: (email: string) => Promise<void>;
+  /** Sets a new password for the current (recovery or normal) session. */
+  updatePassword: (password: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -103,6 +118,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void loadMe();
   }, [token, loadMe]);
 
+  const applyMe = useCallback((next: MeResponse) => {
+    setMe(next);
+    setMeStatus('ready');
+  }, []);
+
   const retryMe = useCallback(() => {
     void loadMe();
   }, [loadMe]);
@@ -110,6 +130,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw new Error(error.message);
+  }, []);
+
+  const requestPasswordReset = useCallback(async (email: string) => {
+    const redirectTo = resetRedirectUrl({
+      isWeb: Platform.OS === 'web',
+      origin: Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.origin : undefined,
+      webUrl: process.env.EXPO_PUBLIC_WEB_URL,
+    });
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+    if (error) {
+      if (error.status === 429 || /rate limit/i.test(error.message)) {
+        throw new Error('Too many reset requests. Please wait a few minutes and try again.');
+      }
+      throw new Error(toFriendlyError(error, "Couldn't send the reset email. Please try again."));
+    }
+  }, []);
+
+  const updatePassword = useCallback(async (password: string) => {
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) throw new Error(toFriendlyError(error, error.message || "Couldn't update your password. Please try again."));
   }, []);
 
   const signOut = useCallback(async () => {
@@ -153,8 +193,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ session, me, loading, meStatus, signingOut, retryMe, signIn, signOut }),
-    [session, me, loading, meStatus, signingOut, retryMe, signIn, signOut],
+    () => ({ session, me, loading, meStatus, signingOut, retryMe, applyMe, signIn, requestPasswordReset, updatePassword, signOut }),
+    [session, me, loading, meStatus, signingOut, retryMe, applyMe, signIn, requestPasswordReset, updatePassword, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

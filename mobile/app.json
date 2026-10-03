@@ -22,7 +22,13 @@
     },
     "web": {
       "output": "single",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "name": "Daily Revision",
+      "shortName": "Revision",
+      "description": "Bite-sized daily revision for students and teachers.",
+      "themeColor": "#4C6A92",
+      "backgroundColor": "#ECEFF4",
+      "lang": "en"
     },
     "plugins": [
       "expo-router",

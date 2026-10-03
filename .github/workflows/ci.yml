@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            mobile/package-lock.json
+
+      # core / api / scripts are npm workspaces; mobile has its own lockfile.
+      - name: Install workspaces
+        run: npm ci
+      - name: Install mobile
+        run: npm ci --prefix mobile
+
+      - name: Question bank integrity
+        run: npm run verify
+
+      - name: Unit tests (core, api, mobile)
+        run: npm test
+
+      # Expo Router writes mobile/.expo/types/router.d.ts (gitignored) only while the dev
+      # server runs, and `tsc` needs it for typed routes. Start the server just long enough.
+      - name: Generate typed routes
+        working-directory: mobile
+        run: |
+          CI=1 npx expo start --offline --port 8123 > "$RUNNER_TEMP/expo-start.log" 2>&1 &
+          server=$!
+          for _ in $(seq 1 90); do
+            [ -f .expo/types/router.d.ts ] && break
+            sleep 1
+          done
+          kill "$server" 2>/dev/null || true
+          test -f .expo/types/router.d.ts || { cat "$RUNNER_TEMP/expo-start.log"; echo "typed routes were not generated"; exit 1; }
+
+      - name: Typecheck (all workspaces + mobile)
+        run: npm run typecheck
+
+      - name: Lint (mobile)
+        run: npm run lint
+
+  # Runs the real API routes against a real Postgres (api/src/api.integration.test.ts).
+  # The suite creates the tables itself from api/test/schema.sql when the database is empty.
+  db-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install workspaces
+        run: npm ci
+
+      - name: API integration tests (real Postgres)
+        working-directory: api
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+        run: npx tsx --test "src/**/*.integration.test.ts"

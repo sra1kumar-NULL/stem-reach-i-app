@@ -1,6 +1,8 @@
 import { useFonts as useFredoka, Fredoka_500Medium, Fredoka_600SemiBold, Fredoka_700Bold } from '@expo-google-fonts/fredoka';
 import { useFonts as useNunito, Nunito_400Regular, Nunito_600SemiBold, Nunito_700Bold } from '@expo-google-fonts/nunito';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import Head from 'expo-router/head';
+import { Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaListener } from 'react-native-safe-area-context';
@@ -56,6 +58,16 @@ function AppShell() {
     <GluestackUIProvider mode={preference}>
       <ThemeProvider value={resolvedTheme === 'dark' ? DarkTheme : DefaultTheme}>
         <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
+        {Platform.OS === 'web' && (
+          // Web is a PWA: the manifest + icon make "Add to Home Screen" install the app.
+          // (`+html.tsx` is ignored with web.output = "single", so the tags are injected here.)
+          <Head>
+            <link rel="manifest" href="/manifest.json" />
+            <link rel="apple-touch-icon" href="/icon-192.png" />
+            <meta name="apple-mobile-web-app-capable" content="yes" />
+            <meta name="apple-mobile-web-app-title" content="Daily Revision" />
+          </Head>
+        )}
         <ErrorBoundary>
           <AuthProvider>
             <ToastProvider>
@@ -63,6 +75,8 @@ function AppShell() {
                 <Stack.Screen name="index" />
                 <Stack.Screen name="login" />
                 <Stack.Screen name="signup" />
+                <Stack.Screen name="forgot-password" />
+                <Stack.Screen name="reset-password" />
                 <Stack.Screen name="(student)" />
                 <Stack.Screen name="(teacher)" />
                 <Stack.Screen name="(self-study)" />

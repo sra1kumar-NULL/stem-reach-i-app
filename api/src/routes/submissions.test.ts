@@ -17,6 +17,7 @@ const mcq = (over: Record<string, unknown> = {}) => ({
   sectionId: SEC,
   qtype: "mcq",
   enabled: true,
+  status: "published",
   correctOption: 2,
   explanation: "because",
   ...over,
@@ -44,6 +45,12 @@ test("rejects a new answer to a past day's set (409) without writing", async () 
 
 test("rejects a new answer to a disabled question", async () => {
   const { res, calls } = post([[set()], [mcq({ enabled: false })], [{ id: SEC }], []], { selected_option: 2 });
+  assert.equal((await res).status, 400);
+  assert.ok(!calls.includes("insert"));
+});
+
+test("rejects a new answer to a draft question", async () => {
+  const { res, calls } = post([[set()], [mcq({ status: "draft" })], [{ id: SEC }], []], { selected_option: 2 });
   assert.equal((await res).status, 400);
   assert.ok(!calls.includes("insert"));
 });

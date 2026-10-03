@@ -13,7 +13,9 @@ import { Button, ButtonText } from '@/components/ui/button';
 import { Heading } from '@/components/ui/heading';
 import { Text as UIText } from '@/components/ui/text';
 import { Accents, onAccent, Type } from '@/constants/theme';
+import { useSelfStudyOwner } from '@/hooks/use-self-study-owner';
 import { getSelfStudyDb, normalizeDeckId, type LocalCard } from '@/lib/self-study-db';
+import { SQL } from '@/lib/self-study-owner';
 import { calculateSM2, localDateString, type ReviewButton } from '@/lib/sm2';
 
 /**
@@ -25,6 +27,7 @@ import { calculateSM2, localDateString, type ReviewButton } from '@/lib/sm2';
 export default function ReviewScreen() {
   const params = useLocalSearchParams<{ deckId?: string | string[] }>();
   const deckId = normalizeDeckId(params.deckId) ?? '';
+  const ownerId = useSelfStudyOwner();
   const { showToast } = useToast();
   const [cards, setCards] = useState<LocalCard[]>([]);
   const [idx, setIdx] = useState(0);
@@ -45,6 +48,7 @@ export default function ReviewScreen() {
       setLoading(false);
       return;
     }
+    if (!ownerId) return; // auth still restoring
     setLoading(true);
     setError(null);
     setIdx(0);
@@ -54,14 +58,8 @@ export default function ReviewScreen() {
       try {
         const db = await getSelfStudyDb();
         const today = localDateString();
-        const rows = await db.getAllAsync<LocalCard>(
-          'SELECT * FROM local_cards WHERE deck_id = ? AND due_date <= ? ORDER BY due_date ASC',
-          [deckId, today],
-        );
-        const info = await db.getFirstAsync<{ total: number; next_due: string | null }>(
-          'SELECT COUNT(*) AS total, MIN(CASE WHEN due_date > ? THEN due_date END) AS next_due FROM local_cards WHERE deck_id = ?',
-          [today, deckId],
-        );
+        const rows = await db.getAllAsync<LocalCard>(SQL.dueCards, [deckId, today, ownerId]);
+        const info = await db.getFirstAsync<{ total: number; next_due: string | null }>(SQL.deckInfo, [today, deckId, ownerId]);
         announced.current = -1;
         setCards(rows);
         setDeckInfo({ total: info?.total ?? 0, nextDue: info?.next_due ?? null });
@@ -72,7 +70,7 @@ export default function ReviewScreen() {
         setLoading(false);
       }
     })();
-  }, [deckId]);
+  }, [deckId, ownerId]);
 
   useEffect(() => {
     load();
@@ -103,7 +101,7 @@ export default function ReviewScreen() {
 
   const handleGrade = async (button: ReviewButton) => {
     const current = cards[idx];
-    if (!current || busy) return;
+    if (!current || busy || !ownerId) return;
     setBusy(true);
     try {
       const next = calculateSM2(
@@ -112,10 +110,7 @@ export default function ReviewScreen() {
         localDateString(),
       );
       const db = await getSelfStudyDb();
-      await db.runAsync(
-        'UPDATE local_cards SET interval = ?, repetition = ?, ease_factor = ?, due_date = ? WHERE id = ?',
-        [next.interval, next.repetition, next.ease_factor, next.due_date, current.id],
-      );
+      await db.runAsync(SQL.gradeCard, [next.interval, next.repetition, next.ease_factor, next.due_date, current.id, ownerId]);
       if (button !== 'again') hapticSuccess();
       else hapticLight();
       setRevealed(false);
@@ -131,12 +126,10 @@ export default function ReviewScreen() {
   /** Zettelkasten `[[…]]` link → open the deck that owns the target card. */
   const openLinkedCard = useCallback(
     async (targetId: string) => {
+      if (!ownerId) return;
       try {
         const db = await getSelfStudyDb();
-        const rows = await db.getAllAsync<{ deck_id: string }>(
-          'SELECT deck_id FROM local_cards WHERE id = ?',
-          [targetId],
-        );
+        const rows = await db.getAllAsync<{ deck_id: string }>(SQL.cardDeck, [targetId, ownerId]);
         const linkedDeckId = rows[0]?.deck_id;
         if (linkedDeckId) {
           router.push({ pathname: '/(self-study)/review', params: { deckId: linkedDeckId } });
@@ -147,7 +140,7 @@ export default function ReviewScreen() {
         showToast('Could not open the linked card', 'error');
       }
     },
-    [showToast],
+    [showToast, ownerId],
   );
 
   const card = cards[idx];
@@ -270,7 +263,7 @@ export default function ReviewScreen() {
                   disabled={busy}
                   accessibilityRole="button"
                 >
-                  <ButtonText style={Type.bodyBold}>Again</ButtonText>
+                  <ButtonText style={Type.bodyBold}>🔁 Again</ButtonText>
                 </Button>
                 <Button
                   variant="default"
@@ -279,7 +272,7 @@ export default function ReviewScreen() {
                   disabled={busy}
                   accessibilityRole="button"
                 >
-                  <ButtonText style={{ ...Type.bodyBold, color: onAccent(Accents.warn) }}>Hard</ButtonText>
+                  <ButtonText style={{ ...Type.bodyBold, color: onAccent(Accents.warn) }}>😅 Hard</ButtonText>
                 </Button>
                 <Button
                   variant="default"
@@ -288,7 +281,7 @@ export default function ReviewScreen() {
                   disabled={busy}
                   accessibilityRole="button"
                 >
-                  <ButtonText style={{ ...Type.bodyBold, color: onAccent(Accents.success) }}>Good</ButtonText>
+                  <ButtonText style={{ ...Type.bodyBold, color: onAccent(Accents.success) }}>👌 Average</ButtonText>
                 </Button>
                 <Button
                   variant="default"
@@ -297,7 +290,7 @@ export default function ReviewScreen() {
                   disabled={busy}
                   accessibilityRole="button"
                 >
-                  <ButtonText style={{ ...Type.bodyBold, color: onAccent(Accents.teal) }}>Easy</ButtonText>
+                  <ButtonText style={{ ...Type.bodyBold, color: onAccent(Accents.teal) }}>⚡ Easy</ButtonText>
                 </Button>
               </View>
             )}

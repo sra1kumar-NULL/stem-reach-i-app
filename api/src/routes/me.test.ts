@@ -45,3 +45,68 @@ test("due_today counts due reviews when today's set exists, 0 without a set", as
   const noSet = await getMe([[], [{ answered: 0, accuracy: "0" }], [], [{ dueTomorrow: 0, learned: 0, reviewed: 4 }]]);
   assert.equal(noSet.srs.due_today, 0);
 });
+
+test("GET /me includes question_language, defaulting to en", async () => {
+  const body = await getMe([[], [{ answered: 0, accuracy: "0" }], [], [{ dueTomorrow: 0, learned: 0, reviewed: 0 }]]);
+  assert.equal(body.profile.question_language, "en");
+});
+
+const emptyMe = [[], [{ answered: 0, accuracy: "0" }], [], [{ dueTomorrow: 0, learned: 0, reviewed: 0 }]];
+
+async function patchMe(body: unknown, results: unknown[][] = [], role: "student" | "teacher" = "student") {
+  const { db, calls } = fakeDb(results);
+  const res = await harness(me.routes(fakeCtx(db)), role).request("/", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: typeof body === "string" ? body : JSON.stringify(body),
+  });
+  return { res, calls };
+}
+
+test("PATCH /me updates the language and returns the full MeResponse", async () => {
+  const { res, calls } = await patchMe({ question_language: "kn" }, [
+    [{ id: "22222222-2222-4222-8222-222222222222", fullName: "Test User", role: "student", classSection: null, questionLanguage: "kn" }],
+    ...emptyMe,
+  ]);
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as MeResponse;
+  assert.equal(body.profile.question_language, "kn");
+  assert.equal(body.profile.role, "student");
+  assert.equal(calls[0], "update");
+});
+
+test("PATCH /me updates the name (teachers too)", async () => {
+  const { res } = await patchMe(
+    { full_name: "  Asha Rao " },
+    [[{ id: "11111111-1111-4111-8111-111111111111", fullName: "Asha Rao", role: "teacher", classSection: null, questionLanguage: "en" }], ...emptyMe],
+    "teacher",
+  );
+  assert.equal(res.status, 200);
+  assert.equal(((await res.json()) as MeResponse).profile.full_name, "Asha Rao");
+});
+
+test("PATCH /me rejects unknown keys (role, id, class_section, org_id)", async () => {
+  for (const extra of [{ role: "teacher" }, { id: "x" }, { class_section: "10-B" }, { org_id: "x" }]) {
+    const { res, calls } = await patchMe({ full_name: "A", ...extra });
+    assert.equal(res.status, 400);
+    assert.equal(calls.length, 0, "nothing is written");
+  }
+});
+
+test("PATCH /me rejects an empty body, bad language, blank name and non-JSON", async () => {
+  for (const bad of [{}, { question_language: "fr" }, { full_name: "   " }, { full_name: "x".repeat(81) }, "not json", "null"]) {
+    const { res } = await patchMe(bad);
+    assert.equal(res.status, 400, JSON.stringify(bad));
+  }
+});
+
+test("PATCH /me without a token is 401", async () => {
+  const { createApp } = await import("../app.js");
+  const { db } = fakeDb();
+  const res = await createApp(fakeCtx(db)).request("/api/me", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ full_name: "A" }),
+  });
+  assert.equal(res.status, 401);
+});

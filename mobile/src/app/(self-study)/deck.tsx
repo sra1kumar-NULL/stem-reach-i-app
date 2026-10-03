@@ -24,7 +24,9 @@ import { Input, InputField } from '@/components/ui/input';
 import { Text as UIText } from '@/components/ui/text';
 import { Accents, Fonts, Nord, onAccent, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useSelfStudyOwner } from '@/hooks/use-self-study-owner';
 import { getSelfStudyDb, newLocalId, normalizeDeckId, type LocalCard, type LocalDeck } from '@/lib/self-study-db';
+import { SQL } from '@/lib/self-study-owner';
 import { isLearned, localDateString } from '@/lib/sm2';
 
 /** Nord Polar Night scrim (nord0 @ 60%) — reads the same in light and dark (confirm-sheet idiom). */
@@ -44,6 +46,7 @@ type Pending = { kind: 'card'; card: LocalCard } | { kind: 'deck' };
 export default function DeckScreen() {
   const params = useLocalSearchParams<{ deckId?: string | string[] }>();
   const deckId = normalizeDeckId(params.deckId) ?? '';
+  const ownerId = useSelfStudyOwner();
   const theme = useTheme();
   const { showToast } = useToast();
   const [deck, setDeck] = useState<LocalDeck | null>(null);
@@ -66,21 +69,14 @@ export default function DeckScreen() {
       setLoading(false);
       return;
     }
+    if (!ownerId) return; // auth still restoring
     setLoading(true);
     setError(null);
     (async () => {
       try {
         const db = await getSelfStudyDb();
-        const row = await db.getFirstAsync<LocalDeck>(
-          'SELECT id, title, description, created_at FROM local_decks WHERE id = ?',
-          [deckId],
-        );
-        const rows = row
-          ? await db.getAllAsync<LocalCard>(
-              'SELECT * FROM local_cards WHERE deck_id = ? ORDER BY due_date ASC, rowid ASC',
-              [deckId],
-            )
-          : [];
+        const row = await db.getFirstAsync<LocalDeck>(SQL.getDeck, [deckId, ownerId]);
+        const rows = row ? await db.getAllAsync<LocalCard>(SQL.listCards, [deckId, ownerId]) : [];
         setDeck(row ?? null);
         setCards(rows);
       } catch (e) {
@@ -89,7 +85,7 @@ export default function DeckScreen() {
         setLoading(false);
       }
     })();
-  }, [deckId]);
+  }, [deckId, ownerId]);
 
   // Reload on focus so due counts are fresh after a review session.
   useFocusEffect(useCallback(() => load(), [load]));
@@ -115,36 +111,24 @@ export default function DeckScreen() {
   const canSave = front.trim().length > 0 && (editing?.mode === 'deck' || back.trim().length > 0) && !saving;
 
   const handleSaveCard = async () => {
-    if (!editing || !canSave) return;
+    if (!editing || !canSave || !ownerId) return;
     setSaving(true);
     setEditError(null);
     try {
       const db = await getSelfStudyDb();
       if (editing.mode === 'deck') {
-        await db.runAsync('UPDATE local_decks SET title = ?, description = ? WHERE id = ?', [
-          front.trim(),
-          back.trim() || null,
-          deckId,
-        ]);
+        await db.runAsync(SQL.updateDeck, [front.trim(), back.trim() || null, deckId, ownerId]);
         setEditing(null);
         showToast('Deck updated');
       } else if (editing.mode === 'add') {
-        await db.runAsync(
-          'INSERT INTO local_cards (id, deck_id, front, back, interval, repetition, ease_factor, due_date) VALUES (?, ?, ?, ?, 0, 0, 2.5, ?)',
-          [newLocalId('card'), deckId, front.trim(), back.trim(), localDateString()],
-        );
+        await db.runAsync(SQL.insertCard, [newLocalId('card'), front.trim(), back.trim(), localDateString(), deckId, ownerId]);
         // Keep the editor open for the next card — adding several in a row is the common case.
         setFront('');
         setBack('');
         showToast('Card added');
       } else {
         // Text edit only: the card keeps its SM-2 schedule.
-        await db.runAsync('UPDATE local_cards SET front = ?, back = ? WHERE id = ? AND deck_id = ?', [
-          front.trim(),
-          back.trim(),
-          editing.card.id,
-          deckId,
-        ]);
+        await db.runAsync(SQL.updateCardText, [front.trim(), back.trim(), editing.card.id, deckId, ownerId]);
         setEditing(null);
         showToast('Card updated');
       }
@@ -157,12 +141,12 @@ export default function DeckScreen() {
   };
 
   const handleConfirmDelete = async () => {
-    if (!pending) return;
+    if (!pending || !ownerId) return;
     setDeleting(true);
     try {
       const db = await getSelfStudyDb();
       if (pending.kind === 'card') {
-        await db.runAsync('DELETE FROM local_cards WHERE id = ? AND deck_id = ?', [pending.card.id, deckId]);
+        await db.runAsync(SQL.deleteCard, [pending.card.id, deckId, ownerId]);
         setPending(null);
         showToast('Card deleted');
         load();
@@ -170,8 +154,8 @@ export default function DeckScreen() {
         // Explicit child delete: ON DELETE CASCADE needs PRAGMA foreign_keys on
         // this connection, so don't rely on it alone.
         await db.withTransactionAsync(async () => {
-          await db.runAsync('DELETE FROM local_cards WHERE deck_id = ?', [deckId]);
-          await db.runAsync('DELETE FROM local_decks WHERE id = ?', [deckId]);
+          await db.runAsync(SQL.deleteDeckCards, [deckId, ownerId]);
+          await db.runAsync(SQL.deleteDeck, [deckId, ownerId]);
         });
         setPending(null);
         showToast('Deck deleted');

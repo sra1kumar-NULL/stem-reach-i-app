@@ -63,9 +63,17 @@ DEFAULT_SUPABASE_URL="https://cihobqescuhuxtiogivb.supabase.co"
 pre_api="${API_URL:-${EXPO_PUBLIC_API_URL:-}}"
 pre_sb_url="${EXPO_PUBLIC_SUPABASE_URL:-}"
 pre_sb_key="${EXPO_PUBLIC_SUPABASE_ANON_KEY:-}"
+# Read ONLY the public EXPO_PUBLIC_* lines. The file is never sourced: executing an .env as shell breaks on
+# lines like `KEY =value` and would run arbitrary text; other keys (server secrets) must not matter here.
 if [[ -f "$MOBILE/.env" ]]; then
-  set -a; # shellcheck disable=SC1091
-  source "$MOBILE/.env"; set +a
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    if [[ "$line" =~ ^(EXPO_PUBLIC_[A-Z0-9_]+)=(.*)$ ]]; then
+      key="${BASH_REMATCH[1]}"; val="${BASH_REMATCH[2]}"
+      val="${val%\"}"; val="${val#\"}"; val="${val%\'}"; val="${val#\'}"
+      export "$key=$val"
+    fi
+  done < "$MOBILE/.env"
 fi
 export EXPO_PUBLIC_API_URL="${pre_api:-${EXPO_PUBLIC_API_URL:-$DEFAULT_API_URL}}"
 export EXPO_PUBLIC_SUPABASE_URL="${pre_sb_url:-${EXPO_PUBLIC_SUPABASE_URL:-$DEFAULT_SUPABASE_URL}}"

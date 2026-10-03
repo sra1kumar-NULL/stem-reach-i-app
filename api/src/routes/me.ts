@@ -1,17 +1,18 @@
 import { Hono } from "hono";
 import { eq, sql } from "drizzle-orm";
-import { dailySets, reviewStates, streaks, submissions } from "@stemreach/core/db/schema";
-import type { AppContext } from "../lib/http.js";
+import { ZodError } from "zod";
+import { dailySets, profiles, reviewStates, streaks, submissions, type Profile } from "@stemreach/core/db/schema";
+import { badRequest, type AppContext } from "../lib/http.js";
+import { normalizeLanguagePref } from "../lib/language.js";
 import { answeredInSet, countDueReviews } from "../lib/reviews.js";
 import { effectiveCurrentStreak } from "../lib/streak.js";
-import { addDaysIso, todayInTz, type MeResponse } from "@stemreach/core";
+import { addDaysIso, todayInTz, UpdateMeRequest, type MeResponse } from "@stemreach/core";
 
 export function routes(ctx: AppContext): Hono {
   const app = new Hono();
 
-  // GET /api/me — profile + streak + lifetime totals + SRS stats
-  app.get("/", async (c) => {
-    const user = c.var.user;
+  // Profile + streak + lifetime totals + SRS stats (shared by GET and PATCH).
+  async function buildMe(user: { id: string; profile: Profile }): Promise<MeResponse> {
     const today = todayInTz(ctx.timezone);
     const tomorrow = addDaysIso(today, 1);
 
@@ -29,7 +30,7 @@ export function routes(ctx: AppContext): Hono {
     // in today's set. Reviews are served inside today's set, so with no set
     // today there is nothing the student can review in the app → 0.
     const [set] = await ctx.db.select({ id: dailySets.id }).from(dailySets).where(eq(dailySets.setDate, today)).limit(1);
-    const dueToday = set ? await countDueReviews(ctx.db, user.id, today, await answeredInSet(ctx.db, user.id, set.id)) : 0;
+    const dueToday = set ? await countDueReviews(ctx.db, user.id, today, await answeredInSet(ctx.db, user.id, set.id), user.profile.questionLanguage) : 0;
 
     const [srs] = await ctx.db
       .select({
@@ -46,6 +47,7 @@ export function routes(ctx: AppContext): Hono {
         full_name: user.profile.fullName,
         role: user.profile.role,
         class_section: user.profile.classSection,
+        question_language: normalizeLanguagePref(user.profile.questionLanguage),
       },
       streak: {
         // Stored `current` is stale after missed days (only updated on answer).
@@ -65,7 +67,29 @@ export function routes(ctx: AppContext): Hono {
         reviewed: srs?.reviewed ?? 0,
       },
     };
-    return c.json(body);
+    return body;
+  }
+
+  // GET /api/me
+  app.get("/", async (c) => c.json(await buildMe(c.var.user)));
+
+  // PATCH /api/me — full_name / question_language only. The row is addressed by
+  // the verified token's user id; role, id and class are never accepted.
+  app.patch("/", async (c) => {
+    const user = c.var.user;
+    let body: UpdateMeRequest;
+    try {
+      body = UpdateMeRequest.parse(await c.req.json().catch(() => null));
+    } catch (e) {
+      if (e instanceof ZodError) throw badRequest(e.issues.map((i) => i.message).join("; "));
+      throw e;
+    }
+    const patch: Partial<Pick<Profile, "fullName" | "questionLanguage">> = {};
+    if (body.full_name !== undefined) patch.fullName = body.full_name;
+    if (body.question_language !== undefined) patch.questionLanguage = body.question_language;
+
+    const [updated] = await ctx.db.update(profiles).set(patch).where(eq(profiles.id, user.id)).returning();
+    return c.json(await buildMe({ id: user.id, profile: updated ?? { ...user.profile, ...patch } }));
   });
 
   return app;

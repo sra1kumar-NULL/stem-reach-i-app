@@ -1,6 +1,7 @@
 import { and, eq, lte, notInArray, sql } from "drizzle-orm";
 import { questions, reviewStates, submissions } from "@stemreach/core/db/schema";
 import type { AppContext } from "./http.js";
+import { languageFilterFor } from "./language.js";
 
 /** Hard cap on the whole daily queue (reviews take priority). */
 export const MAX_QUEUE = 30;
@@ -24,32 +25,34 @@ export async function answeredInSet(db: AppContext["db"], studentId: string, set
  * excluding what was already answered in today's set. Shared by the feed (which
  * serves them) and /me (which counts them) so the two can never disagree.
  */
-export function dueReviewWhere(studentId: string, today: string, exclude: string[]) {
+export function dueReviewWhere(studentId: string, today: string, exclude: string[], lang?: string) {
   return and(
     eq(reviewStates.studentId, studentId),
     lte(reviewStates.dueDate, today),
     eq(questions.enabled, true),
+    eq(questions.status, "published"),
+    languageFilterFor(lang),
     exclude.length > 0 ? notInArray(reviewStates.questionId, exclude) : undefined,
   );
 }
 
 /** Due review rows (oldest first), capped at MAX_QUEUE. */
-export async function dueReviews(db: AppContext["db"], studentId: string, today: string, exclude: string[]) {
+export async function dueReviews(db: AppContext["db"], studentId: string, today: string, exclude: string[], lang?: string) {
   return db
     .select({ question: questions, review: reviewStates })
     .from(reviewStates)
     .innerJoin(questions, eq(questions.id, reviewStates.questionId))
-    .where(dueReviewWhere(studentId, today, exclude))
+    .where(dueReviewWhere(studentId, today, exclude, lang))
     .orderBy(reviewStates.dueDate)
     .limit(MAX_QUEUE);
 }
 
 /** Count of due reviews the feed would still serve today (uncapped). */
-export async function countDueReviews(db: AppContext["db"], studentId: string, today: string, exclude: string[]): Promise<number> {
+export async function countDueReviews(db: AppContext["db"], studentId: string, today: string, exclude: string[], lang?: string): Promise<number> {
   const [row] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(reviewStates)
     .innerJoin(questions, eq(questions.id, reviewStates.questionId))
-    .where(dueReviewWhere(studentId, today, exclude));
+    .where(dueReviewWhere(studentId, today, exclude, lang));
   return Number(row?.count ?? 0);
 }

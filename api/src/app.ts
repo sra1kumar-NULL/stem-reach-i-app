@@ -11,12 +11,17 @@ import * as syllabus from "./routes/syllabus.js";
 import * as activations from "./routes/activations.js";
 import * as reports from "./routes/reports.js";
 import * as questions from "./routes/questions.js";
+import * as questionsIo from "./routes/questions-io.js";
+import * as catalog from "./routes/catalog.js";
+import * as calendar from "./routes/calendar.js";
+import * as students from "./routes/students.js";
+import * as account from "./routes/account.js";
 
 export function createApp(ctx: AppContext): Hono {
   const app = new Hono();
 
   app.use(logger());
-  app.use(cors({ origin: "*", allowMethods: ["GET", "POST", "DELETE", "OPTIONS"], allowHeaders: ["Content-Type", "Authorization"] }));
+  app.use(cors({ origin: "*", allowMethods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"], allowHeaders: ["Content-Type", "Authorization"] }));
   app.onError(errorHandler(ctx.logger));
   app.notFound(notFoundHandler);
 
@@ -33,7 +38,15 @@ export function createApp(ctx: AppContext): Hono {
   api.route("/syllabus", syllabus.routes(ctx));
   api.route("/activations", activations.routes(ctx));
   api.route("/reports", reports.routes(ctx));
+  // questions-io owns the literal /questions/import and /questions/export paths:
+  // mount it BEFORE the questions router so they never reach a /:id handler.
+  api.route("/questions", questionsIo.routes(ctx));
   api.route("/questions", questions.routes(ctx));
+  api.route("/chapters", catalog.chapterRoutes(ctx));
+  api.route("/sections", catalog.sectionRoutes(ctx));
+  api.route("/calendar", calendar.routes(ctx));
+  api.route("/students", students.routes(ctx));
+  api.route("/me", account.routes(ctx));
 
   app.route("/api", api);
   return app;

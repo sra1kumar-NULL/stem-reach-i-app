@@ -96,10 +96,14 @@ const InputField = React.forwardRef<
   React.ComponentRef<typeof UIInput.Input>,
   IInputFieldProps
 >(function InputField({ className, ...props }, ref) {
+  // gluestack's Input replaces `accessibilityLabel` with a generic "Input Field"; `aria-label` survives,
+  // so mirror the label there. Without this every form field is announced identically.
+  const label = (props as { 'aria-label'?: string })['aria-label'] ?? props.accessibilityLabel;
   return (
     <UIInput.Input
       ref={ref}
       {...props}
+      {...(label ? { 'aria-label': label } : {})}
       className={inputFieldStyle({
         class: className,
       })}

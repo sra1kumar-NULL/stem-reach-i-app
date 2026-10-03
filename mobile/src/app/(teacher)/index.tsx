@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Link } from 'expo-router';
+import { Link, type Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -234,6 +234,12 @@ export default function ActivateScreen() {
               <Ionicons name="people-outline" size={16} color={Accents.primary} />
               <UIText className="text-primary-text font-bold" style={Type.bodyBold}>
                 Participation
+              </UIText>
+            </Link>
+            <Link href={'/(teacher)/students' as Href} style={styles.navLink}>
+              <Ionicons name="school-outline" size={16} color={Accents.primary} />
+              <UIText className="text-primary-text font-bold" style={Type.bodyBold}>
+                Students
               </UIText>
             </Link>
             <Link href="/(teacher)/reports" style={styles.navLink}>

@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "seed": "tsx src/seed.ts",
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "verify": "tsx src/verify.ts",
     "create-users": "tsx src/create-users.ts"
   },
