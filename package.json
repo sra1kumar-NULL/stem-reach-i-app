@@ -13,7 +13,12 @@
     "test": "npm test --workspaces --if-present && npm --prefix mobile test",
     "seed": "npm run seed -w scripts",
     "verify": "npm run verify -w scripts",
-    "dev:api": "npm run dev -w api"
+    "dev:api": "npm run dev -w api",
+    "dev:web": "npm --prefix mobile run web",
+    "dev:mobile": "npm --prefix mobile run dev",
+    "dev:android": "npm --prefix mobile run android",
+    "lint": "npm --prefix mobile run lint",
+    "build:apk": "bash scripts/build-apk.sh"
   },
   "engines": {
     "node": ">=22.6"
