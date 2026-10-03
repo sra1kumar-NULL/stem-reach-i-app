@@ -47,7 +47,8 @@ cp api/.env.example api/.env     # Supabase URL + keys + DB URL (use the pooler 
 cp mobile/.env.example mobile/.env
 npm run seed                     # load content/*.json into the database
 npm run dev:api                  # API on :3000
-cd mobile && npm run dev         # 'a' emulator · 'w' web · Expo Go QR on a phone
+npm run dev:web                  # app in the browser (second terminal)
+npm run dev:mobile               # Expo dev server: 'a' emulator · 'w' web · Expo Go QR on a phone
 ```
 
 Demo accounts (dummy, for testing only): see [`dummy-creds.json`](dummy-creds.json).
@@ -71,13 +72,21 @@ Never commit `.env` files. Only `.env.example` placeholders belong in the repo.
 npm run typecheck        # all workspaces
 npm test                 # core unit tests
 npm run verify           # question bank integrity
-cd mobile && npm run lint
+npm run lint             # mobile ESLint
 ```
+
+| Script (repo root) | What it does |
+|---|---|
+| `dev:api` | Start the API on :3000 |
+| `dev:web` | Run the app in the browser |
+| `dev:mobile` | Expo dev server (emulator / Expo Go / web) |
+| `dev:android` | Build and run on a connected Android device or emulator |
+| `build:apk` | Build a release APK into `dist/` |
 
 ## Building an Android APK
 
 ```bash
-scripts/build-apk.sh     # needs JDK 17 + Android SDK; output in dist/daily-revision-<version>.apk
+npm run build:apk        # same as scripts/build-apk.sh; needs JDK 17 + Android SDK; output in dist/daily-revision-<version>.apk
 ```
 
 The APK talks to the hosted API set by `EXPO_PUBLIC_API_URL` (see `mobile/eas.json` for the EAS

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Confetti } from '@/components/confetti';
 import { hapticError, hapticFlip, hapticLight, hapticSuccess } from '@/components/haptics';
@@ -139,7 +139,7 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
       >
         <Box className="flex-1 justify-center bg-card p-6 rounded-3xl gap-6">
           <View style={styles.metaRow}>
-            <Box className={`rounded-full px-2.5 py-1 ${isMcq ? 'bg-primary-soft' : question.is_review ? 'bg-warn-soft' : 'bg-purple-soft'}`}>
+            <Box style={styles.badge} className={`rounded-full px-2.5 py-1 ${isMcq ? 'bg-primary-soft' : question.is_review ? 'bg-warn-soft' : 'bg-purple-soft'}`}>
               <UIText
                 className={`text-xs font-extrabold uppercase tracking-wide ${isMcq ? 'text-primary-text' : question.is_review ? 'text-warn-text' : 'text-purple-text'}`}
                 style={Type.bodyBold}
@@ -147,7 +147,7 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
                 {isMcq ? '🤔 MCQ' : question.is_review ? '🔁 Review' : '✨ New'}
               </UIText>
             </Box>
-            <UIText className="text-sm text-muted-foreground" style={Type.bodySemi}>
+            <UIText className="text-sm text-muted-foreground" style={[Type.bodySemi, styles.metaLabel]} numberOfLines={2}>
               {sectionLabel} · Q{questionNo}/{total}
             </UIText>
           </View>
@@ -264,15 +264,29 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
 
                 {result == null ? (
                   <View style={styles.evalRow}>
-                    <Button variant="destructive" className="flex-1 rounded-2xl" onPress={() => answerFlashcard('again')} disabled={busy}>
-                      <ButtonText style={Type.bodyBold}>🔁 Again</ButtonText>
-                    </Button>
-                    <Button variant="default" className="flex-1 rounded-2xl bg-success" onPress={() => answerFlashcard('good')} disabled={busy}>
-                      <ButtonText style={{ ...Type.bodyBold, color: onAccent(Accents.success) }}>👍 Good</ButtonText>
-                    </Button>
-                    <Button variant="default" className="flex-1 rounded-2xl bg-teal" onPress={() => answerFlashcard('easy')} disabled={busy}>
-                      <ButtonText style={{ ...Type.bodyBold, color: onAccent(Accents.teal) }}>⚡ Easy</ButtonText>
-                    </Button>
+                    {EVAL_BUTTONS.map(({ value, label, variant, color, labelColor }) => {
+                      const loading = busy && pendingEval === value;
+                      return (
+                        <Button
+                          key={value}
+                          variant={variant}
+                          className={`flex-1 rounded-2xl ${busy && !loading ? 'opacity-40' : ''}`}
+                          style={color ? { backgroundColor: color } : undefined}
+                          onPress={() => answerFlashcard(value)}
+                          disabled={busy}
+                          accessibilityLabel={label}
+                          accessibilityState={{ disabled: busy, busy: loading }}
+                        >
+                          {loading ? (
+                            <ActivityIndicator size="small" color={labelColor} />
+                          ) : (
+                            <ButtonText style={labelColor ? { ...Type.bodyBold, color: labelColor } : Type.bodyBold}>
+                              {EVAL_EMOJI[value]} {label}
+                            </ButtonText>
+                          )}
+                        </Button>
+                      );
+                    })}
                   </View>
                 ) : (
                   <Animated.View style={{ opacity: pop, transform: [{ scale: pop.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }) }] }}>
@@ -340,9 +354,29 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
   );
 }
 
+type EvalChoice = Extract<SelfEval, 'again' | 'good' | 'easy'>;
+
+const EVAL_EMOJI: Record<EvalChoice, string> = { again: '🔁', good: '👍', easy: '⚡' };
+
+// Self-grade buttons; `labelColor` doubles as the spinner colour while the answer is in flight.
+const EVAL_BUTTONS: {
+  value: EvalChoice;
+  label: string;
+  variant: 'destructive' | 'default';
+  color?: string;
+  labelColor?: string;
+}[] = [
+  { value: 'again', label: 'Again', variant: 'destructive' },
+  { value: 'good', label: 'Good', variant: 'default', color: Accents.success, labelColor: onAccent(Accents.success) },
+  { value: 'easy', label: 'Easy', variant: 'default', color: Accents.teal, labelColor: onAccent(Accents.teal) },
+];
+
 const styles = StyleSheet.create({
   entry: { flex: 1 },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  // Badge keeps its size; the label takes the rest and wraps/truncates instead of overflowing the card (Android).
+  badge: { flexShrink: 0 },
+  metaLabel: { flex: 1, flexShrink: 1, minWidth: 0 },
   option: {
     borderWidth: 1,
     borderColor: Accents.border,
