@@ -63,6 +63,7 @@ function AppShell() {
                 <Stack.Screen name="signup" />
                 <Stack.Screen name="(student)" />
                 <Stack.Screen name="(teacher)" />
+                <Stack.Screen name="(self-study)" />
               </Stack>
             </ToastProvider>
           </AuthProvider>

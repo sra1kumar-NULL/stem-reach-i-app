@@ -191,6 +191,17 @@ export default function FeedScreen() {
         </Box>
         <ThemeToggle />
         <Pressable
+          onPress={() => router.push('/(self-study)')}
+          style={({ pressed }) => [styles.signoutPill, pressed && { opacity: 0.6 }]}
+          accessibilityRole="button"
+          accessibilityLabel="Self study"
+        >
+          <Ionicons name="library-outline" size={14} color={theme.textSecondary} />
+          <UIText className="text-muted-foreground font-semibold" style={Type.bodySemi}>
+            Study
+          </UIText>
+        </Pressable>
+        <Pressable
           onPress={openConfirm}
           style={({ pressed }) => [styles.signoutBtn, { backgroundColor: theme.backgroundElement }, pressed && { opacity: 0.6 }]}
           accessibilityRole="button"
