@@ -19,6 +19,7 @@ export function routes(ctx: AppContext): Hono {
         sectionId: sections.id,
         sectionNo: sections.sectionNo,
         sectionName: sections.name,
+        sectionSortOrder: sections.sortOrder,
         questionCount: count(questions.id),
         enabledCount: count(sql`case when ${questions.enabled} then 1 end`),
       })
@@ -44,6 +45,7 @@ export function routes(ctx: AppContext): Hono {
         name: r.sectionName,
         question_count: r.questionCount,
         enabled_question_count: Number(r.enabledCount ?? 0),
+        sort_order: r.sectionSortOrder ?? undefined,
       });
       byChapter.set(r.chapterId, chapter);
     }

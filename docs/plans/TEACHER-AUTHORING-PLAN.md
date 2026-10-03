@@ -1,6 +1,6 @@
 # Plan — Teacher authoring, calendar, answer images, student profile, password reset
 
-Status: **decisions locked (see §0); nothing implemented.** Written 2026-10-03 against branch `chore/claude-setup-audit-fixes`.
+Status: **Round 2 implemented (2026-10-04) except the answer image upload (§6), delete-my-account and email verification.** Decisions in §0; API/DB spec in `ROUND2-API-SPEC.md`; rollout in `docs/DEPLOY.md`. Written 2026-10-03 against branch `chore/claude-setup-audit-fixes`.
 Needs the decisions in §9 before work starts. Follows AGENTS.md (API is the only writer, Zod at every
 boundary, authz from the verified token, `core/` changes additive only, Drizzle-only SQL).
 
@@ -25,7 +25,7 @@ Requested items:
 | 4 | Calendar | **Date added + plan ahead** (option A + C1/C2): questions added per day, topics activated per day, activate for future dates, copy last week, participation colour per day. Per-question scheduling (option B) stays out. |
 | 5 | Permissions | **Any teacher can edit/archive any question in the shared pool, with history**: `updated_by` + `edited_at` on every PATCH now; a `question_revisions` snapshot table so edits can be restored. Org scoping (06 PR-02) later narrows it per school via the single `assertCanEditQuestion()` helper. |
 | 6 | Deleting | **Archive by default; permanent delete only when no student has ever answered it** (any teacher; seeded questions included). |
-| 7 | Student email | **Most students have readable email** → email reset link is the primary recovery path. Teacher-assisted reset stays deferred behind org scoping. |
+| 7 | Student email / reset | **Most students have readable email** → email reset link (built). **Teacher-set password is ALSO in this round (owner: "teacher sets the password is best")**: teacher resets a *student's* password, student must change it at next sign-in; server-enforced; audited; rate-limited. See `ROUND2-API-SPEC.md` §2.6. |
 | 8 | Categories | **Teachers create/rename/reorder chapters and topics in the app (F1).** |
 | 9 | Profile editing | **Name only** (`PATCH /api/me`, accepts `full_name` and `question_language` only; never `role`, `id`, class). |
 | 10 | Languages | **English + Kannada authoring.** Students choose **Question language (English / Kannada / Both)** in Profile; the feed filters by it. Existing students default to English. |
@@ -86,7 +86,7 @@ for the first ~5 swipes only (counter in AsyncStorage per user: `feed_swipes_v1:
 
 **G4 — 3-step coach overlay (first launch per user).** One-time, skippable, shown over the first card after the first feed load:
 1. "Swipe up for the next question" (animated finger gesture),
-2. "Tap **Show Answer**, then rate yourself: Again · Good · Easy" (highlights the three buttons),
+2. "Tap **Show Answer**, then rate yourself: Again · Average · Easy" (highlights the three buttons),
 3. "Your streak 🔥 and progress are up here" (highlights the top bar).
 Stored as `coach_v1:<userId>` in AsyncStorage (fails safe: if storage is unavailable, show once per session). Re-open any time from
 Profile → **How it works**. Accessible: focus moves into the overlay, "Skip" and "Next" are real buttons, announced steps, no gesture-only dismissal,

@@ -1,5 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 
+import { migrationStatements } from '@/lib/self-study-owner';
+
 export interface LocalDeck {
   id: string;
   title: string;
@@ -86,6 +88,12 @@ export async function getSelfStudyDb(): Promise<SQLite.SQLiteDatabase> {
           due_date TEXT NOT NULL
         );
       `)
+      .then(async () => {
+        // Versioned migrations (PRAGMA user_version): v1 adds decks.owner_id.
+        const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
+        const statements = migrationStatements(row?.user_version ?? 0);
+        if (statements.length > 0) await db.execAsync(`BEGIN; ${statements.join('; ')}; COMMIT;`);
+      })
       .catch((error) => {
         schemaPromise = null;
         throw error;

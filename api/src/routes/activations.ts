@@ -1,11 +1,63 @@
 import { Hono } from "hono";
-import { count, eq, inArray } from "drizzle-orm";
+import { and, asc, count, eq, gte, inArray, lte } from "drizzle-orm";
 import { ZodError } from "zod";
 import { dailySetSections, dailySets, questions, sections } from "@stemreach/core/db/schema";
 import { requireRole } from "../lib/auth.js";
 import type { AppContext } from "../lib/http.js";
 import { badRequest } from "../lib/http.js";
-import { ActivateRequest, isValidIsoDate, todayInTz, type ActivationResponse } from "@stemreach/core";
+import {
+  ActivateRequest,
+  ActivationRangeQuery,
+  PlanActivationsRequest,
+  isValidIsoDate,
+  todayInTz,
+  type ActivationRangeResponse,
+  type ActivationResponse,
+} from "@stemreach/core";
+import { parseOr400 } from "../lib/catalog-utils.js";
+
+/** Longest span (inclusive days) GET /activations/range will serve. */
+export const MAX_RANGE_DAYS = 62;
+
+/** Days between two ISO dates (UTC math, DST-proof). */
+function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+}
+
+/** Activated days in [from, to] (inclusive) with their sections; days without a daily set are absent. */
+export async function activationRange(ctx: AppContext, from: string, to: string, only?: string[]): Promise<ActivationRangeResponse> {
+  const sets = await ctx.db
+    .select({ id: dailySets.id, date: dailySets.setDate })
+    .from(dailySets)
+    .where(and(gte(dailySets.setDate, from), lte(dailySets.setDate, to), only ? inArray(dailySets.setDate, only) : undefined))
+    .orderBy(asc(dailySets.setDate));
+  if (sets.length === 0) return { activations: [] };
+
+  const secRows = await ctx.db
+    .select({
+      daily_set_id: dailySetSections.dailySetId,
+      id: sections.id,
+      section_no: sections.sectionNo,
+      name: sections.name,
+      question_count: count(questions.id),
+    })
+    .from(dailySetSections)
+    .innerJoin(sections, eq(sections.id, dailySetSections.sectionId))
+    .leftJoin(questions, eq(questions.sectionId, sections.id))
+    .where(inArray(dailySetSections.dailySetId, sets.map((s) => s.id)))
+    .groupBy(dailySetSections.dailySetId, sections.id)
+    .orderBy(asc(sections.sortOrder));
+
+  return {
+    activations: sets.map((s) => ({
+      date: s.date,
+      daily_set_id: s.id,
+      sections: secRows
+        .filter((r) => r.daily_set_id === s.id)
+        .map(({ id, section_no, name, question_count }) => ({ id, section_no, name, question_count })),
+    })),
+  };
+}
 
 async function snapshot(ctx: AppContext, date: string): Promise<ActivationResponse> {
   const [set] = await ctx.db.select().from(dailySets).where(eq(dailySets.setDate, date)).limit(1);
@@ -82,6 +134,50 @@ export function routes(ctx: AppContext): Hono {
     const date = c.req.query("date") ?? todayInTz(ctx.timezone);
     if (!isValidIsoDate(date)) throw badRequest("date must be a real calendar date (YYYY-MM-DD)");
     return c.json(await snapshot(ctx, date));
+  });
+
+  // GET /api/activations/range?from=&to= — activated days with sections (max 62 days)
+  app.get("/range", requireRole("teacher"), async (c) => {
+    const { from, to } = parseOr400(ActivationRangeQuery, c.req.query());
+    if (!isValidIsoDate(from) || !isValidIsoDate(to)) throw badRequest("from and to must be real calendar dates (YYYY-MM-DD)");
+    if (to < from) throw badRequest("to must not be before from");
+    if (daysBetween(from, to) + 1 > MAX_RANGE_DAYS) throw badRequest(`range is limited to ${MAX_RANGE_DAYS} days`);
+    return c.json(await activationRange(ctx, from, to));
+  });
+
+  // POST /api/activations/plan — same sections on several future dates, all-or-nothing
+  app.post("/plan", requireRole("teacher"), async (c) => {
+    const body = parseOr400(PlanActivationsRequest, await c.req.json().catch(() => null));
+
+    const bad = body.dates.filter((d) => !isValidIsoDate(d));
+    if (bad.length > 0) throw badRequest(`not real calendar dates: ${bad.join(", ")}`);
+    const today = todayInTz(ctx.timezone);
+    const past = body.dates.filter((d) => d < today);
+    if (past.length > 0) throw badRequest(`dates must be today (${today}) or later: ${past.join(", ")}`);
+
+    const dates = [...new Set(body.dates)].sort();
+    const sectionIds = [...new Set(body.section_ids)];
+    const known = await ctx.db.select({ id: sections.id }).from(sections).where(inArray(sections.id, sectionIds));
+    if (known.length !== sectionIds.length) {
+      const knownIds = new Set(known.map((k) => k.id));
+      throw badRequest(`unknown section id(s): ${sectionIds.filter((id) => !knownIds.has(id)).join(", ")}`);
+    }
+
+    const teacherId = c.var.user.id;
+    await ctx.db.transaction(async (tx) => {
+      const setRows = await tx
+        .insert(dailySets)
+        .values(dates.map((setDate) => ({ setDate, activatedBy: teacherId })))
+        .onConflictDoUpdate({ target: dailySets.setDate, set: { activatedBy: teacherId } })
+        .returning({ id: dailySets.id });
+      const setIds = setRows.map((r) => r.id);
+      await tx.delete(dailySetSections).where(inArray(dailySetSections.dailySetId, setIds));
+      await tx
+        .insert(dailySetSections)
+        .values(setIds.flatMap((dailySetId) => sectionIds.map((sectionId) => ({ dailySetId, sectionId }))));
+    });
+
+    return c.json(await activationRange(ctx, dates[0], dates[dates.length - 1], dates));
   });
 
   return app;

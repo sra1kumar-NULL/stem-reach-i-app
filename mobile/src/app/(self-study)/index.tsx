@@ -24,7 +24,9 @@ import { Input, InputField } from '@/components/ui/input';
 import { Text as UIText } from '@/components/ui/text';
 import { Accents, Fonts, Nord, onAccent, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useSelfStudyOwner } from '@/hooks/use-self-study-owner';
 import { getSelfStudyDb, newLocalId, type LocalDeck } from '@/lib/self-study-db';
+import { SQL } from '@/lib/self-study-owner';
 import { localDateString } from '@/lib/sm2';
 
 /** Nord Polar Night scrim (nord0 @ 60%) — reads the same in light and dark (confirm-sheet idiom). */
@@ -46,6 +48,7 @@ interface DeckRow extends LocalDeck {
 export default function SelfStudyScreen() {
   const theme = useTheme();
   const { showToast } = useToast();
+  const ownerId = useSelfStudyOwner();
   const [decks, setDecks] = useState<DeckRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -57,19 +60,15 @@ export default function SelfStudyScreen() {
   const [createError, setCreateError] = useState<string | null>(null);
 
   const load = useCallback(() => {
+    if (!ownerId) return; // auth still restoring — don't show another owner's decks
     setLoading(true);
     setError(null);
     (async () => {
       try {
         const db = await getSelfStudyDb();
-        const rows = await db.getAllAsync<LocalDeck>(
-          'SELECT id, title, description, created_at FROM local_decks ORDER BY created_at DESC',
-        );
+        const rows = await db.getAllAsync<LocalDeck>(SQL.listDecks, [ownerId]);
         const today = localDateString();
-        const countRows = await db.getAllAsync<{ deck_id: string; due: number; cards: number }>(
-          'SELECT deck_id, SUM(CASE WHEN due_date <= ? THEN 1 ELSE 0 END) AS due, COUNT(*) AS cards FROM local_cards GROUP BY deck_id',
-          [today],
-        );
+        const countRows = await db.getAllAsync<{ deck_id: string; due: number; cards: number }>(SQL.deckCounts, [today, ownerId]);
         const countsByDeck = new Map(countRows.map((d) => [d.deck_id, d]));
         setDecks(
           rows.map((row) => ({
@@ -84,7 +83,7 @@ export default function SelfStudyScreen() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [ownerId]);
 
   // Reload on every focus so due-counts stay fresh after a review session.
   useFocusEffect(useCallback(() => load(), [load]));
@@ -99,16 +98,13 @@ export default function SelfStudyScreen() {
 
   const handleCreateDeck = async () => {
     const trimmedTitle = title.trim();
-    if (!trimmedTitle || saving) return;
+    if (!trimmedTitle || saving || !ownerId) return;
     setSaving(true);
     setCreateError(null);
     try {
       const db = await getSelfStudyDb();
       const deckId = newLocalId('deck');
-      await db.runAsync(
-        'INSERT INTO local_decks (id, title, description, created_at) VALUES (?, ?, ?, ?)',
-        [deckId, trimmedTitle, description.trim() || null, new Date().toISOString()],
-      );
+      await db.runAsync(SQL.insertDeck, [deckId, trimmedTitle, description.trim() || null, new Date().toISOString(), ownerId]);
       setModalVisible(false);
       showToast('Deck created');
       // Straight to the new deck so the user can add its first cards.

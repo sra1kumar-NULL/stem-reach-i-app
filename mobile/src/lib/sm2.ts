@@ -3,7 +3,7 @@
  * (device-local SQLite, see `self-study-db.ts`).
  *
  * The math is core's scheduler (`@stemreach/core/srs`) — the same one the API
- * uses for feed flashcards — so Again/Hard/Good/Easy mean exactly the same
+ * uses for feed flashcards — so Again/Hard/Average (wire value `good`)/Easy mean exactly the same
  * thing in self-study and in the daily feed (Hard is a pass with a short,
  * slowly growing interval; Again re-learns today). This file only adapts the
  * local column names and does local-calendar date math. `@stemreach/core/srs`

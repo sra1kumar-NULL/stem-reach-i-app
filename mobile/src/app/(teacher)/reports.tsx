@@ -15,6 +15,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { toFriendlyError } from '@/lib/friendly-error';
 import { addDays, localDateString } from '@/lib/sm2';
 import type { PerformanceReport } from '@stemreach/core';
+import { initials } from '@/lib/profile';
 
 const AVATAR_COLORS = [Nord.nord15, Nord.nord7, Nord.nord12, Nord.nord10, Nord.nord13, Nord.nord11];
 
@@ -36,15 +37,6 @@ function accuracyColor(pct: number): string {
   if (pct >= 75) return Accents.success;
   if (pct >= 50) return Accents.warn;
   return Accents.danger;
-}
-
-function initials(name: string): string {
-  return name
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? '')
-    .join('');
 }
 
 function AnimatedBar({ pct, color }: { pct: number; color: string }) {

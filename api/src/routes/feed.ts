@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { dailySetSections, dailySets, sections, chapters, questions, reviewStates, submissions } from "@stemreach/core/db/schema";
 import { answeredInSet, dueReviews, MAX_QUEUE } from "../lib/reviews.js";
+import { languageFilterFor } from "../lib/language.js";
 import { requireRole } from "../lib/auth.js";
 import type { AppContext } from "../lib/http.js";
 import { DAILY_PER_SECTION, todayInTz, type FeedResponse, type ProgressDto, type QuestionDto } from "@stemreach/core";
@@ -12,6 +13,8 @@ export function routes(ctx: AppContext): Hono {
   // GET /api/feed/today — the student's daily revision set (LLD §2)
   app.get("/today", requireRole("student"), async (c) => {
     const studentId = c.var.user.id;
+    const langPref = c.var.user.profile.questionLanguage;
+    const langFilter = languageFilterFor(langPref);
     const today = todayInTz(ctx.timezone);
 
     const empty: FeedResponse = {
@@ -44,7 +47,7 @@ export function routes(ctx: AppContext): Hono {
     const target = await ctx.db
       .select({ sectionId: questions.sectionId, count: sql<number>`count(*)::int` })
       .from(questions)
-      .where(and(eq(questions.enabled, true), inArray(questions.sectionId, sectionIds)))
+      .where(and(eq(questions.enabled, true), eq(questions.status, "published"), langFilter, inArray(questions.sectionId, sectionIds)))
       .groupBy(questions.sectionId);
     const targetPerSection = new Map(target.map((t) => [t.sectionId, Math.min(t.count, DAILY_PER_SECTION)]));
     const total = [...targetPerSection.values()].reduce((a, b) => a + b, 0);
@@ -69,7 +72,7 @@ export function routes(ctx: AppContext): Hono {
     // re-activated today), minus everything already answered in today's set
     // (any section) so an "again" card is not re-served in a loop.
     const answeredAnySection = await answeredInSet(ctx.db, studentId, set.id);
-    const dueRows = await dueReviews(ctx.db, studentId, today, answeredAnySection);
+    const dueRows = await dueReviews(ctx.db, studentId, today, answeredAnySection, langPref);
     for (const row of dueRows) {
       sampled.push({ question: row.question, isReview: true });
       queuedIds.add(row.question.id);
@@ -92,7 +95,9 @@ export function routes(ctx: AppContext): Hono {
       .where(
         and(
           eq(questions.enabled, true),
+          eq(questions.status, "published"),
           eq(questions.qtype, "flashcard"),
+          langFilter,
           inArray(questions.sectionId, sectionIds),
           newExclude.length > 0 ? notInArray(questions.id, newExclude) : undefined,
         ),
@@ -132,7 +137,9 @@ export function routes(ctx: AppContext): Hono {
         .where(
           and(
             eq(questions.enabled, true),
+            eq(questions.status, "published"),
             eq(questions.qtype, "mcq"),
+            langFilter,
             inArray(questions.sectionId, sectionIds),
             seenIds.length > 0 ? notInArray(questions.id, seenIds) : undefined,
           ),

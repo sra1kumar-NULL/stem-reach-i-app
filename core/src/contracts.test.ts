@@ -132,3 +132,67 @@ test("SignupRequest: teacher_invite_code is optional and additive", () => {
   assert.equal(SignupRequest.safeParse({ ...student, teacher_invite_code: "" }).success, false);
   assert.equal(SignupRequest.safeParse({ ...student, teacher_invite_code: "x".repeat(129) }).success, false);
 });
+
+// ── Round 2 contracts ───────────────────────────────────────────────────────
+
+import {
+  CalendarQuery,
+  CreateSectionRequest,
+  ImportQuestionsRequest,
+  PlanActivationsRequest,
+  UpdateMeRequest,
+  UpdateQuestionRequest,
+} from "./contracts.ts";
+
+test("UpdateQuestionRequest: needs a field, rejects unknown keys, partial MCQ fields allowed", () => {
+  assert.equal(UpdateQuestionRequest.safeParse({}).success, false);
+  assert.equal(UpdateQuestionRequest.safeParse({ created_by: "x" }).success, false, "strict");
+  assert.equal(UpdateQuestionRequest.safeParse({ enabled: false }).success, true);
+  assert.equal(UpdateQuestionRequest.safeParse({ text: "x".repeat(501) }).success, false, "length cap");
+  assert.equal(UpdateQuestionRequest.safeParse({ options: ["a", "b"] }).success, false, "options must be 4");
+});
+
+test("UpdateMeRequest: only name and question_language, never role or id", () => {
+  assert.equal(UpdateMeRequest.safeParse({ full_name: "Asha" }).success, true);
+  assert.equal(UpdateMeRequest.safeParse({ question_language: "both" }).success, true);
+  assert.equal(UpdateMeRequest.safeParse({ question_language: "fr" }).success, false);
+  assert.equal(UpdateMeRequest.safeParse({ role: "teacher" }).success, false);
+  assert.equal(UpdateMeRequest.safeParse({ id: "00000000-0000-0000-0000-000000000000" }).success, false);
+  assert.equal(UpdateMeRequest.safeParse({}).success, false);
+});
+
+test("ListQuestionsQuery: coerces limit, caps it, validates dates", () => {
+  const ok = ListQuestionsQuery.parse({ limit: "25", archived: "only", created_on: "2026-10-04" });
+  assert.equal(ok.limit, 25);
+  assert.equal(ListQuestionsQuery.safeParse({ limit: "500" }).success, false);
+  assert.equal(ListQuestionsQuery.safeParse({ created_on: "04-10-2026" }).success, false);
+  assert.equal(ListQuestionsQuery.safeParse({}).success, true);
+});
+
+test("ImportQuestionsRequest: bounded rows; rows stay unvalidated so errors are per row", () => {
+  assert.equal(ImportQuestionsRequest.safeParse({ rows: [], dry_run: true }).success, false);
+  assert.equal(ImportQuestionsRequest.safeParse({ rows: [{ junk: 1 }], dry_run: true }).success, true);
+  assert.equal(ImportQuestionsRequest.safeParse({ rows: Array(201).fill({}), dry_run: true }).success, false);
+  assert.equal(ImportQuestionsRequest.safeParse({ rows: [{}] }).success, false, "dry_run is required");
+});
+
+test("PlanActivationsRequest / CalendarQuery / CreateSectionRequest bounds", () => {
+  const id = "00000000-0000-4000-8000-000000000000";
+  assert.equal(PlanActivationsRequest.safeParse({ dates: ["2026-10-05"], section_ids: [id] }).success, true);
+  assert.equal(PlanActivationsRequest.safeParse({ dates: Array(32).fill("2026-10-05"), section_ids: [id] }).success, false);
+  assert.equal(PlanActivationsRequest.safeParse({ dates: ["tomorrow"], section_ids: [id] }).success, false);
+  assert.equal(CalendarQuery.safeParse({ month: "2026-13" }).success, false);
+  assert.equal(CalendarQuery.safeParse({ month: "2026-10" }).success, true);
+  assert.equal(CreateSectionRequest.safeParse({ chapter_id: id, section_no: "", name: "x" }).success, false);
+});
+
+import { ChangePasswordRequest, ResetStudentPasswordRequest } from "./contracts.ts";
+
+test("teacher-set reset contracts: optional temp password, strict, length bounds", () => {
+  assert.equal(ResetStudentPasswordRequest.safeParse({}).success, true);
+  assert.equal(ResetStudentPasswordRequest.safeParse({ temporary_password: "short" }).success, false);
+  assert.equal(ResetStudentPasswordRequest.safeParse({ temporary_password: "longenough1" }).success, true);
+  assert.equal(ResetStudentPasswordRequest.safeParse({ student_id: "x" }).success, false, "strict");
+  assert.equal(ChangePasswordRequest.safeParse({ new_password: "x".repeat(73) }).success, false, "bcrypt limit");
+  assert.equal(ChangePasswordRequest.safeParse({ new_password: "longenough1", id: "x" }).success, false, "strict");
+});

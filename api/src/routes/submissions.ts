@@ -57,7 +57,7 @@ async function progressFor(
   const target = await ctx.db
     .select({ sectionId: questions.sectionId, count: sql<number>`count(*)::int` })
     .from(questions)
-    .where(and(eq(questions.enabled, true), inArray(questions.sectionId, sectionIds)))
+    .where(and(eq(questions.enabled, true), eq(questions.status, "published"), inArray(questions.sectionId, sectionIds)))
     .groupBy(questions.sectionId);
 
   const total = [...target.values()].reduce((sum, t) => sum + Math.min(t.count, DAILY_PER_SECTION), 0);
@@ -204,7 +204,7 @@ export function routes(ctx: AppContext): Hono {
       // Only today's set accepts new answers: a stale/forged daily_set_id used
       // to let students score (and extend streaks) on past or future days.
       if (set.setDate !== today) throw conflict("this revision set is not today's — refresh to get today's questions");
-      if (!question.enabled) throw badRequest("question is no longer available");
+      if (!question.enabled || question.status !== "published") throw badRequest("question is no longer available");
       // In today's activated sections, or a flashcard the student has due for
       // review (due reviews are served from any section — see lib/reviews.ts).
       if (!sectionIds.includes(question.sectionId)) {

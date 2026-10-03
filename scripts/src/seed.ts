@@ -5,13 +5,14 @@ import { eq } from "drizzle-orm";
 import { makeDb } from "@stemreach/core/db/client";
 import { chapters, sections, questions } from "@stemreach/core/db/schema";
 import { SeedContent, type SeedQuestion } from "@stemreach/core/content";
+import { decideSeedAction, parseSeedArgs } from "./seed-lock.js";
 
 dotenv.config({
   path: [path.resolve(import.meta.dirname, "../../api/.env"), path.resolve(import.meta.dirname, "../.env")],
 });
 
 const CONTENT_DIR = path.resolve(process.cwd(), "../content");
-const DEFAULT_FILE = process.argv[2] ?? "ch12.json";
+const { file: DEFAULT_FILE, force: FORCE } = parseSeedArgs(process.argv.slice(2));
 
 async function main() {
   const connectionString = process.env.DATABASE_URL;
@@ -56,6 +57,7 @@ async function main() {
 
   let seededQuestions = 0;
   let updatedQuestions = 0;
+  let skippedEdited = 0;
 
   for (const [i, sec] of parsed.sections.entries()) {
     let sectionId = existingSections.find((s) => s.sectionNo === sec.section_no)?.id;
@@ -95,7 +97,11 @@ async function main() {
         difficulty: q.difficulty,
       };
       const already = existing.find((e) => e.questionText === q.text);
-      if (already) {
+      const action = decideSeedAction(already, FORCE);
+      if (action === "skip_edited") {
+        console.log(`  skipped (edited in app, use --force to overwrite): ${q.text.slice(0, 60)}`);
+        skippedEdited++;
+      } else if (action === "update" && already) {
         await db.update(questions).set(values).where(eq(questions.id, already.id));
         updatedQuestions++;
       } else {
@@ -115,7 +121,7 @@ async function main() {
   }
 
   console.log(
-    `done: ${seededQuestions} inserted, ${updatedQuestions} updated — chapter ${parsed.chapter.ncert_no}`,
+    `done: ${seededQuestions} inserted, ${updatedQuestions} updated, ${skippedEdited} skipped (edited in app) — chapter ${parsed.chapter.ncert_no}`,
   );
   await db.$client.end();
 }

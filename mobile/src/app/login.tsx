@@ -163,6 +163,16 @@ export default function LoginScreen() {
               )}
             </Button>
             <Pressable
+              onPress={() => router.push('/forgot-password')}
+              className="min-h-11 items-center justify-center py-1"
+              accessibilityRole="link"
+              accessibilityLabel="Forgot password? Get help signing in"
+            >
+              <Text className="text-primary-text text-sm font-bold underline" style={{ fontFamily: Fonts.sans }}>
+                Forgot password?
+              </Text>
+            </Pressable>
+            <Pressable
               onPress={() => router.push('/signup')}
               className="min-h-11 items-center justify-center py-1.5"
               accessibilityRole="link"

@@ -11,15 +11,20 @@ UI. Fully white-label: no school-specific branding, so any school can adopt it.
 - Swipeable question feed (MCQ + flip-card recall) with animated feedback, streaks, a progress bar
   and a daily summary
 - Spaced-repetition review: questions you got wrong or found hard come back when they are due
-- Offline **self-study decks** stored on the device (SQLite) with SM-2 scheduling
+- Offline **self-study decks** stored on the device (SQLite) with SM-2 scheduling, kept per account
+- Guided feed: next-card peek, answer-first with Skip, swipe cue and a 3-step first-run guide
+- Profile: name, question language (English / Kannada / Both), change password, appearance, "How it works"
 
 **Teachers**
-- Activate today's topics (subject → module → topic)
-- Live participation board
-- Per-student performance, leaderboard and reports
+- Author questions in the app: create, edit, archive/restore, delete (when unused), drafts, edit history with restore, near-duplicate warning, preview-as-student, symbol toolbar (², ₂, Ω, θ …), English + Kannada
+- Manage chapters and topics, bulk import (CSV/TSV/JSON) and export
+- Calendar: see what was added and activated each day, class participation by day, plan topics ahead, copy last week
+- Activate today's topics, live participation board, per-student performance, leaderboard and reports
+- Students: roster and teacher-set temporary passwords (student must choose a new one at next sign-in)
 
 **Everyone**
 - Self signup and sign-in (Supabase Auth); teacher signup needs an invite code
+- Forgot password by email link, or ask a teacher to set a temporary password
 - Nord theme with light/dark modes, Fredoka + Nunito fonts, toasts and friendly error screens
 
 ## Repository layout
@@ -83,6 +88,17 @@ npm run lint             # mobile ESLint
 | `dev:android` | Build and run on a connected Android device or emulator |
 | `build:apk` | Build a release APK into `dist/` |
 
+## Testing
+
+```bash
+npm test                      # unit tests: core, api, scripts, mobile (no database)
+# real Postgres, real routes and SQL (truncates all tables — use a scratch database):
+TEST_DATABASE_URL=postgresql://postgres:test@localhost:55432/stem npm test -w api
+```
+
+CI (`.github/workflows/ci.yml`) runs typecheck, lint, content verification, unit tests and the real-database suite.
+Database changes ship as SQL in [`docs/migrations/`](docs/migrations/); see the rollout steps in [docs/DEPLOY.md](docs/DEPLOY.md).
+
 ## Building an Android APK
 
 ```bash
@@ -113,7 +129,7 @@ is a breaking change for installed apps.
 - [Architecture](docs/ARCHITECTURE.md) — system shape, flows, stack
 - [PRD](docs/01-PRD.md) · [HLD](docs/03-HLD.md) · [LLD](docs/04-LLD.md) · [Roadmap](docs/05-ROADMAP.md) · [Feature plan](docs/06-FEATURE-PLAN.md)
 - [Deployment guide](docs/DEPLOY.md) · [ADRs](docs/ADR/)
-- Plans: [UI](docs/plans/UI-PLAN.md) · [Feature improvements](docs/plans/FEATURE-IMPROVEMENT-PLAN.md) · [Bug hunt](docs/plans/BUG-HUNT-PLAN.md)
+- Plans: [Round 2 spec](docs/plans/ROUND2-API-SPEC.md) · [Teacher authoring](docs/plans/TEACHER-AUTHORING-PLAN.md) · [UI](docs/plans/UI-PLAN.md) · [Feature improvements](docs/plans/FEATURE-IMPROVEMENT-PLAN.md) · [Bug hunt](docs/plans/BUG-HUNT-PLAN.md)
 - Reviews: [Audit 2026-10](docs/reviews/AUDIT-2026-10.md) · [Emulator QA](docs/reviews/EMULATOR-QA.md)
 
 ## Status

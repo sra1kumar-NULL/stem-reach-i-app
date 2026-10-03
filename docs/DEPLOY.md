@@ -224,3 +224,62 @@ Teachers can use the web version instead.
 The app contains **no school-specific branding** — it is fully generic by design.
 Same build works for any school; the only per-deployment difference is the roster of user accounts
 created in Supabase.
+
+---
+
+## Round 2 rollout (teacher authoring, calendar, profile, teacher-set passwords)
+
+Do these **in this order**. Steps 1–2 must happen before any teacher or student uses the new app build.
+
+### 1. Database (Supabase → SQL Editor)
+Run `docs/migrations/2026-10-04-round2-ALL.sql` once. It is idempotent (safe to re-run) and ends with a
+verification query: every row must show `ok = true`.
+It adds `profiles.question_language`, `questions.status / edited_at / updated_by`, and the tables
+`question_revisions` and `password_resets` (RLS on, no policies, like the other tables).
+> The new API reads these columns on every feed/login request, so deploy the API only **after** this step.
+
+### 2. API (Render)
+- Merge to `main`; Render redeploys. Environment (Render → Environment):
+  - `TEACHER_INVITE_CODE` — secret teachers need to self-register (unset = teacher signup disabled)
+  - `APP_TIMEZONE` — `Asia/Kolkata` (default)
+  - `SUPABASE_SERVICE_KEY` must already be set — teacher-set password resets use the Supabase admin API.
+- Check: `/api/healthz` returns `{"ok":true}`.
+
+### 3. Web app (Vercel)
+- Project Root Directory = `mobile`; `mobile/vercel.json` provides the SPA rewrite (direct links like `/login`
+  and `/reset-password` work after a refresh) and the build settings.
+- Environment variables: `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`; redeploy after changing them.
+- The web build ships a PWA manifest + icons (`mobile/public/`).
+
+### 4. Supabase Auth (dashboard)
+- Authentication → URL Configuration: Site URL = the Vercel URL; add `<vercel-url>/reset-password` and
+  `http://localhost:8081/reset-password` under Redirect URLs.
+- Authentication → Emails → SMTP Settings: custom SMTP (e.g. Resend, sender on a verified subdomain) so reset emails are delivered.
+
+### 5. Mobile app (APK)
+`npm run build:apk` → `dist/daily-revision-<version>.apk` (no new native dependencies in Round 2).
+
+### Compatibility
+All API and contract changes are additive: older app builds keep working against the new API.
+A student on an older build keeps getting English questions (the default language preference).
+Draft and archived questions are never served to any client.
+
+### Teacher-set passwords
+A teacher resets a *student's* password (Students screen). The API sets the temporary password through the Supabase
+admin API and flags the account `app_metadata.must_change_password`; until the student chooses a new password the API
+answers `403 password_change_required` to everything except `GET /api/me` and `POST /api/me/change-password`.
+Every reset is recorded in `password_resets`. Limit: 20 resets per teacher per hour (in-memory, per API instance).
+
+### Verifying after deploy (10 minutes)
+1. Teacher: Questions tab loads; create a draft and a published question; the draft must **not** appear in a student's feed.
+2. Edit a question that has answers: changing the correct option is refused with a clear message; changing the explanation works and shows in History.
+3. Calendar: today shows dots; "Plan ahead" for tomorrow; student feed next day shows those topics.
+4. Students → reset a throwaway student's password → sign in as that student: forced to choose a new password.
+5. Profile → Question language → Kannada: a student sees no English questions.
+6. Forgot password on the login screen → email arrives (check spam) → link opens `/reset-password`.
+
+### Automated tests
+- `npm test` — unit tests (core, api, scripts, mobile); no database needed.
+- Real-database suite (65 tests, runs the real routes and SQL): start any empty Postgres 16, then
+  `TEST_DATABASE_URL=postgresql://postgres:test@localhost:55432/stem npm test -w api`.
+  **It truncates every table — never point it at a database you care about.** CI runs it automatically (job `db-integration`).

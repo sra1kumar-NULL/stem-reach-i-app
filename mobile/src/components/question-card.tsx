@@ -18,10 +18,17 @@ interface Props {
   onSubmit: (questionId: string, body: { selected_option?: number; self_eval?: SelfEval }) => Promise<SubmissionResponse>;
   onAnswered: (isCorrect: boolean) => void;
   onAdvance: () => void;
+  /** Present only while the card can be skipped (unanswered, under the cap, another card left). */
+  onSkip?: () => void;
+  /** Shown under the card while unanswered, e.g. "2 skipped - answer them to finish". */
+  skipNote?: string;
+  /** True when nothing else is left to answer; the Next button reads "Finish". Defaults to the last numbered card. */
+  isLast?: boolean;
 }
 
 /** One full-screen question card (MCQ or flashcard) for the vertical feed. */
-export function QuestionCard({ question, sectionLabel, questionNo, total, onSubmit, onAnswered, onAdvance }: Props) {
+export function QuestionCard({ question, sectionLabel, questionNo, total, onSubmit, onAnswered, onAdvance, onSkip, skipNote, isLast }: Props) {
+  const finishing = isLast ?? questionNo >= total;
   const [selected, setSelected] = useState<number | null>(null);
   const [result, setResult] = useState<SubmissionResponse | null>(null);
   const [busy, setBusy] = useState(false);
@@ -34,6 +41,9 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
   const entry = useRef(new Animated.Value(0)).current;
   const pop = useRef(new Animated.Value(0)).current;
   const flip = useRef(new Animated.Value(0)).current;
+  // Latest onAdvance without re-running the post-answer effect (parents pass a fresh closure every render).
+  const advanceRef = useRef(onAdvance);
+  advanceRef.current = onAdvance;
   const isMcq = question.type === 'mcq';
 
   useEffect(() => {
@@ -60,13 +70,13 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
     AccessibilityInfo.isScreenReaderEnabled()
       .catch(() => false)
       .then((screenReader) => {
-        if (!cancelled && !screenReader) t = setTimeout(onAdvance, 1800);
+        if (!cancelled && !screenReader) t = setTimeout(() => advanceRef.current(), 1800);
       });
     return () => {
       cancelled = true;
       if (t) clearTimeout(t);
     };
-  }, [result, pop, onAdvance, isMcq]);
+  }, [result, pop, isMcq]);
 
   const answerMcq = async (option: number) => {
     if (result != null || busy) return;
@@ -336,6 +346,31 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
             </Box>
           )}
 
+          {result == null && (onSkip != null || skipNote != null) && (
+            <View style={styles.skipArea}>
+              {skipNote != null && (
+                <UIText accessibilityLiveRegion="polite" className="text-sm text-muted-foreground text-center" style={Type.bodySemi}>
+                  {skipNote}
+                </UIText>
+              )}
+              {onSkip != null && (
+                <Pressable
+                  onPress={onSkip}
+                  disabled={busy}
+                  accessibilityRole="button"
+                  accessibilityLabel="Skip this question"
+                  accessibilityHint="Moves it to the end. Nothing is recorded."
+                  accessibilityState={{ disabled: busy }}
+                  style={({ pressed }) => [styles.skipBtn, busy && { opacity: 0.4 }, pressed && { opacity: 0.6 }]}
+                >
+                  <UIText className="text-muted-foreground" style={[Type.bodySemi, styles.skipText]}>
+                    Skip
+                  </UIText>
+                </Pressable>
+              )}
+            </View>
+          )}
+
           {result != null && (
             <Button
               variant="default"
@@ -343,9 +378,9 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
               className="min-h-11 rounded-2xl"
               onPress={onAdvance}
               accessibilityRole="button"
-              accessibilityLabel={questionNo >= total ? 'Finish' : 'Next question'}
+              accessibilityLabel={finishing ? 'Finish' : 'Next question'}
             >
-              <ButtonText style={Type.bodyBold}>{questionNo >= total ? 'Finish' : 'Next →'}</ButtonText>
+              <ButtonText style={Type.bodyBold}>{finishing ? 'Finish' : 'Next →'}</ButtonText>
             </Button>
           )}
         </Box>
@@ -356,9 +391,9 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
 
 type EvalChoice = Extract<SelfEval, 'again' | 'good' | 'easy'>;
 
-const EVAL_EMOJI: Record<EvalChoice, string> = { again: '🔁', good: '👍', easy: '⚡' };
+const EVAL_EMOJI: Record<EvalChoice, string> = { again: '🔁', good: '👌', easy: '⚡' };
 
-// Self-grade buttons; `labelColor` doubles as the spinner colour while the answer is in flight.
+// Self-grade buttons (wire value `good` is unchanged — only the label reads "Average"); `labelColor` doubles as the spinner colour while the answer is in flight.
 const EVAL_BUTTONS: {
   value: EvalChoice;
   label: string;
@@ -367,7 +402,7 @@ const EVAL_BUTTONS: {
   labelColor?: string;
 }[] = [
   { value: 'again', label: 'Again', variant: 'destructive' },
-  { value: 'good', label: 'Good', variant: 'default', color: Accents.success, labelColor: onAccent(Accents.success) },
+  { value: 'good', label: 'Average', variant: 'default', color: Accents.success, labelColor: onAccent(Accents.success) },
   { value: 'easy', label: 'Easy', variant: 'default', color: Accents.teal, labelColor: onAccent(Accents.teal) },
 ];
 
@@ -394,5 +429,8 @@ const styles = StyleSheet.create({
   // In normal flow (not absolute) so a long answer + feedback grows the card
   // instead of overflowing onto the Next button at large font scales.
   flipBack: { gap: 12, backfaceVisibility: 'hidden' },
+  skipArea: { alignItems: 'center', gap: 2 },
+  skipBtn: { minHeight: 44, minWidth: 88, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20 },
+  skipText: { fontSize: 16, textDecorationLine: 'underline' },
   evalRow: { flexDirection: 'row', gap: 10 },
 });
