@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./content": "./src/content.ts",
+    "./srs": "./src/srs.ts",
     "./db/schema": "./src/db/schema.ts",
     "./db/client": "./src/db/client.ts"
   },

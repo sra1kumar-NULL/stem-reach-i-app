@@ -1,6 +1,10 @@
 # AGENTS.md
 
-Project instructions for OpenCode in the **Daily Revision** repo. Read this before working here.
+Project instructions for OpenCode and Claude Code in the **Daily Revision** repo. Read this before
+working here.
+
+> Agents, skills, and commands are defined twice: for OpenCode in `.opencode/` (+ `opencode.json`)
+> and for Claude Code in `.claude/` (+ `CLAUDE.md`). They must be kept in sync — change both together.
 
 ## What this repo is
 
@@ -36,7 +40,7 @@ Design docs: `docs/01-PRD.md`, `docs/03-HLD.md`, `docs/04-LLD.md`, `docs/05-ROAD
 
 ## Agents
 
-Defined in `.opencode/agents/`.
+Defined in `.opencode/agents/` (OpenCode) and `.claude/agents/` (Claude Code subagents).
 
 | Agent | Mode | Focus |
 |---|---|---|
@@ -86,8 +90,9 @@ resolved and the application runs as expected.
 
 ## Skills
 
-Defined in `.opencode/skills/`, loaded on demand with the `skill` tool. Per-agent access is granted
-in `opencode.json`.
+Defined in `.opencode/skills/` (OpenCode, loaded with the `skill` tool) and `.claude/skills/` (Claude
+Code). Per-agent access is granted in `opencode.json` and mirrored in each `.claude/agents/*.md`
+`skills:` list.
 
 | Skill | Covers |
 |---|---|
@@ -100,7 +105,7 @@ in `opencode.json`.
 
 ## Commands
 
-Defined in `.opencode/commands/`.
+Defined in `.opencode/commands/` (OpenCode) and `.claude/commands/` (Claude Code).
 
 | Command | Workflow |
 |---|---|

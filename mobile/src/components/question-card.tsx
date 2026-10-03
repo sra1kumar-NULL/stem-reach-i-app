@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Confetti } from '@/components/confetti';
 import { hapticError, hapticFlip, hapticLight, hapticSuccess } from '@/components/haptics';
@@ -7,6 +7,7 @@ import { Box } from '@/components/ui/box';
 import { Button, ButtonText } from '@/components/ui/button';
 import { Text as UIText } from '@/components/ui/text';
 import { Accents, onAccent, Type } from '@/constants/theme';
+import { toFriendlyError } from '@/lib/friendly-error';
 import type { QuestionDto, SelfEval, SubmissionResponse } from '@stemreach/core';
 
 interface Props {
@@ -25,6 +26,11 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
   const [result, setResult] = useState<SubmissionResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [confetti, setConfetti] = useState(false);
+  /** Last submit failure — shown inline with Retry instead of silently resetting the card. */
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  /** Flashcard grade whose submit failed, for Retry. */
+  const [pendingEval, setPendingEval] = useState<SelfEval | null>(null);
+  const [flipped, setFlipped] = useState(false);
   const entry = useRef(new Animated.Value(0)).current;
   const pop = useRef(new Animated.Value(0)).current;
   const flip = useRef(new Animated.Value(0)).current;
@@ -34,17 +40,39 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
     Animated.spring(entry, { toValue: 1, useNativeDriver: true, friction: 8, tension: 55 }).start();
   }, [entry]);
 
+  // After answering: announce the feedback, and auto-advance only when there
+  // is nothing to read (no explanation) and no screen reader is running —
+  // otherwise the explicit Next button is the way on (WCAG 2.2.1).
   useEffect(() => {
     if (result == null) return;
     Animated.spring(pop, { toValue: 1, useNativeDriver: true, friction: 5, tension: 90 }).start();
-    const t = setTimeout(onAdvance, 1800);
-    return () => clearTimeout(t);
-  }, [result, pop, onAdvance]);
+    const verdict = isMcq
+      ? result.is_correct
+        ? 'Correct!'
+        : 'Not quite.'
+      : result.is_correct
+        ? 'Great recall!'
+        : 'Added back for practice.';
+    AccessibilityInfo.announceForAccessibility(result.explanation ? `${verdict} ${result.explanation}` : verdict);
+    if (result.explanation != null) return;
+    let cancelled = false;
+    let t: ReturnType<typeof setTimeout> | undefined;
+    AccessibilityInfo.isScreenReaderEnabled()
+      .catch(() => false)
+      .then((screenReader) => {
+        if (!cancelled && !screenReader) t = setTimeout(onAdvance, 1800);
+      });
+    return () => {
+      cancelled = true;
+      if (t) clearTimeout(t);
+    };
+  }, [result, pop, onAdvance, isMcq]);
 
   const answerMcq = async (option: number) => {
-    if (selected != null || busy) return;
+    if (result != null || busy) return;
     setSelected(option);
     setBusy(true);
+    setSubmitError(null);
     try {
       const res = await onSubmit(question.id, { selected_option: option });
       setResult(res);
@@ -55,9 +83,10 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
       } else {
         hapticError();
       }
-    } catch {
+    } catch (e) {
+      // Keep the pick visible as pending and say why; Retry (or another option) resubmits.
       hapticLight();
-      setSelected(null);
+      setSubmitError(toFriendlyError(e, "Couldn't send your answer. Try again."));
     } finally {
       setBusy(false);
     }
@@ -66,14 +95,17 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
   const answerFlashcard = async (selfEval: SelfEval) => {
     if (result != null || busy) return;
     setBusy(true);
+    setSubmitError(null);
+    setPendingEval(selfEval);
     try {
       const res = await onSubmit(question.id, { self_eval: selfEval });
       setResult(res);
       onAnswered(res.is_correct);
       if (res.is_correct) hapticSuccess();
       else hapticError();
-    } catch {
+    } catch (e) {
       hapticLight();
+      setSubmitError(toFriendlyError(e, "Couldn't send your answer. Try again."));
     } finally {
       setBusy(false);
     }
@@ -81,6 +113,9 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
 
   const doFlip = () => {
     hapticFlip();
+    // Android ignores backfaceVisibility for touches, so the faces also need
+    // pointerEvents or the hidden grade buttons swallow taps on "Show Answer".
+    setFlipped(true);
     Animated.spring(flip, { toValue: 1, useNativeDriver: true, friction: 6, tension: 60 }).start();
   };
 
@@ -132,7 +167,10 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
                   <Pressable
                     key={i}
                     onPress={() => answerMcq(i)}
-                    disabled={selected != null}
+                    disabled={result != null || busy}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: isSelected, disabled: result != null || busy }}
+                    accessibilityLabel={`${'ABCD'[i]}. ${option}${isCorrectOption ? ', correct answer' : isWrongPick ? ', your answer, incorrect' : ''}`}
                     style={({ pressed }) => [
                       styles.option,
                       pressed && styles.optionPressed,
@@ -186,13 +224,23 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
           ) : (
             <View style={styles.flipArea}>
               <Animated.View
+                pointerEvents={flipped ? 'none' : 'auto'}
+                accessibilityElementsHidden={flipped}
+                importantForAccessibility={flipped ? 'no-hide-descendants' : 'auto'}
                 style={[
                   styles.flipFace,
                   styles.flipFront,
                   { transform: [{ perspective: 1200 }, { rotateY: frontRotate }] },
                 ]}
               >
-                <Button variant="outline" size="lg" className="rounded-2xl bg-purple border-purple" onPress={doFlip} disabled={busy}>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="rounded-2xl"
+                  style={{ backgroundColor: Accents.purple, borderColor: Accents.purple }}
+                  onPress={doFlip}
+                  disabled={busy}
+                >
                   <ButtonText style={{ ...Type.bodyBold, color: onAccent(Accents.purple) }}>
                     👀 Show Answer
                   </ButtonText>
@@ -202,7 +250,12 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
                 </UIText>
               </Animated.View>
 
-              <Animated.View style={[styles.flipFace, { transform: [{ perspective: 1200 }, { rotateY: backRotate }] }]}>
+              <Animated.View
+                pointerEvents={flipped ? 'auto' : 'none'}
+                accessibilityElementsHidden={!flipped}
+                importantForAccessibility={flipped ? 'auto' : 'no-hide-descendants'}
+                style={[styles.flipBack, { transform: [{ perspective: 1200 }, { rotateY: backRotate }] }]}
+              >
                 <Box className="bg-secondary rounded-2xl p-4">
                   <UIText className="text-lg leading-7 text-foreground" style={Type.bodySemi}>
                     {question.answer ?? '—'}
@@ -248,6 +301,39 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
               </Animated.View>
             </View>
           )}
+
+          {submitError != null && result == null && (
+            <Box className="gap-2 rounded-2xl border border-danger bg-danger-soft p-3.5">
+              <UIText accessibilityRole="alert" className="text-sm text-danger-text" style={Type.bodySemi}>
+                {submitError}
+              </UIText>
+              <Button
+                variant="default"
+                className="min-h-11 self-start rounded-xl"
+                disabled={busy}
+                onPress={() => {
+                  if (isMcq && selected != null) void answerMcq(selected);
+                  else if (!isMcq && pendingEval != null) void answerFlashcard(pendingEval);
+                }}
+                accessibilityRole="button"
+              >
+                <ButtonText style={Type.bodyBold}>Retry</ButtonText>
+              </Button>
+            </Box>
+          )}
+
+          {result != null && (
+            <Button
+              variant="default"
+              size="lg"
+              className="min-h-11 rounded-2xl"
+              onPress={onAdvance}
+              accessibilityRole="button"
+              accessibilityLabel={questionNo >= total ? 'Finish' : 'Next question'}
+            >
+              <ButtonText style={Type.bodyBold}>{questionNo >= total ? 'Finish' : 'Next →'}</ButtonText>
+            </Button>
+          )}
         </Box>
       </Animated.View>
     </Box>
@@ -271,5 +357,8 @@ const styles = StyleSheet.create({
   flipArea: { position: 'relative', minHeight: 230 },
   flipFace: { position: 'absolute', top: 0, left: 0, right: 0, gap: 12, backfaceVisibility: 'hidden' },
   flipFront: { alignItems: 'stretch' },
+  // In normal flow (not absolute) so a long answer + feedback grows the card
+  // instead of overflowing onto the Next button at large font scales.
+  flipBack: { gap: 12, backfaceVisibility: 'hidden' },
   evalRow: { flexDirection: 'row', gap: 10 },
 });

@@ -59,6 +59,12 @@ Prep already in the repo:
    | `SUPABASE_ANON_KEY` | Supabase → Project Settings → API |
    | `SUPABASE_SERVICE_KEY` | Supabase → Project Settings → API (service_role) |
    | `DATABASE_URL` | Supabase → Settings → Database → **Connection pooling** (use the region pooler host, NOT `db.…` — that host fails to resolve from some providers) |
+   | `TEACHER_INVITE_CODE` | *Optional.* A long random secret you choose (e.g. `openssl rand -hex 16`) and give only to teachers. Teachers must enter it to self-register; leave unset to disable teacher self-signup. Mark it secret in Render. |
+   | `APP_TIMEZONE` | *Optional.* IANA zone that defines the school's "today" (activations, feed, streaks, SRS). Defaults to `Asia/Kolkata`. |
+
+   The API validates its env at startup and exits with the offending variable name if one is
+   missing or invalid. Failed teacher invite attempts are rate limited (5 per 15 min per client
+   IP → `429`); the limiter is in-memory, so it is per instance and resets on restart.
 
 4. Deploy. Wait for the green "Live" badge.
 5. Verify: open `https://<your-service>.onrender.com/api/healthz` → should return `{"ok":true}`.

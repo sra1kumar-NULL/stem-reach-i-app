@@ -5,6 +5,7 @@ import {
   CreateQuestionRequest,
   DeleteQuestionParams,
   ListQuestionsQuery,
+  SignupRequest,
 } from "./contracts.ts";
 import { SeedQuestion } from "./content.ts";
 
@@ -122,4 +123,12 @@ test("ListQuestionsQuery validates optional filters", () => {
   });
   assert.equal(ListQuestionsQuery.safeParse({ section_id: "nope" }).success, false);
   assert.equal(ListQuestionsQuery.safeParse({ mine: "yes" }).success, false);
+});
+
+test("SignupRequest: teacher_invite_code is optional and additive", () => {
+  const student = { full_name: "A", email: "a@example.com", password: "password1", role: "student", class_section: "10A" };
+  assert.equal(SignupRequest.safeParse(student).success, true, "old clients without the field still parse");
+  assert.equal(SignupRequest.safeParse({ ...student, role: "teacher", teacher_invite_code: "code" }).success, true);
+  assert.equal(SignupRequest.safeParse({ ...student, teacher_invite_code: "" }).success, false);
+  assert.equal(SignupRequest.safeParse({ ...student, teacher_invite_code: "x".repeat(129) }).success, false);
 });

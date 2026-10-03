@@ -100,13 +100,26 @@ export const submitAnswer = (body: { question_id: string; daily_set_id: string; 
   apiFetch<SubmissionResponse>('/api/submissions', { method: 'POST', body });
 
 export const getSyllabus = () => apiFetch<SyllabusResponse>('/api/syllabus');
-export const signup = (body: { full_name: string; email: string; password: string; role: 'student' | 'teacher'; class_section?: string }) =>
+export const signup = (body: {
+  full_name: string;
+  email: string;
+  password: string;
+  role: 'student' | 'teacher';
+  class_section?: string;
+  /** Required by the API for role 'teacher'. */
+  teacher_invite_code?: string;
+}) =>
   apiFetch<SignupResponse>('/api/auth/signup', { method: 'POST', body });
 export const getActivations = (date?: string) => apiFetch<ActivationResponse>(`/api/activations${date ? `?date=${date}` : ''}`);
 export const activate = (body: { date?: string; section_ids: string[] }) =>
   apiFetch<ActivationResponse>('/api/activations', { method: 'POST', body });
-export const getParticipation = (date: string, classSection?: string) =>
-  apiFetch<ParticipationReport>(`/api/reports/participation?date=${date}${classSection ? `&class_section=${classSection}` : ''}`);
+/** `date` omitted → the server's school-calendar today (APP_TIMEZONE), not the device's UTC day. */
+export const getParticipation = (date?: string, classSection?: string) =>
+  apiFetch<ParticipationReport>(
+    `/api/reports/participation?${new URLSearchParams(
+      Object.entries({ date: date ?? '', class_section: classSection ?? '' }).filter(([, v]) => v),
+    ).toString()}`,
+  );
 export const getPerformance = (from?: string, to?: string, sectionId?: string) =>
   apiFetch<PerformanceReport>(
     `/api/reports/performance?${new URLSearchParams(

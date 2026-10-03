@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present && npm --prefix mobile run typecheck",
-    "test": "npm test --workspaces --if-present",
+    "test": "npm test --workspaces --if-present && npm --prefix mobile test",
     "seed": "npm run seed -w scripts",
     "verify": "npm run verify -w scripts",
     "dev:api": "npm run dev -w api"

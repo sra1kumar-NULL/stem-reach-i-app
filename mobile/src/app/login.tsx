@@ -78,6 +78,9 @@ export default function LoginScreen() {
           key={i}
           onPress={() => setBounced(i)}
           style={[styles.decorTouch, { top: d.top, left: d.left, right: d.right, bottom: d.bottom }]}
+          // Decorative: hidden from screen readers.
+          accessible={false}
+          importantForAccessibility="no-hide-descendants"
         >
           <Animated.View
             style={[
@@ -118,6 +121,9 @@ export default function LoginScreen() {
                 value={email}
                 onChangeText={setEmail}
                 placeholder="email"
+                accessibilityLabel="Email"
+                autoComplete="email"
+                textContentType="emailAddress"
                 placeholderTextColor={theme.textSecondary}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -131,6 +137,11 @@ export default function LoginScreen() {
                 value={password}
                 onChangeText={setPassword}
                 placeholder="password"
+                accessibilityLabel="Password"
+                autoComplete="password"
+                textContentType="password"
+                returnKeyType="go"
+                onSubmitEditing={() => void submit()}
                 placeholderTextColor={theme.textSecondary}
                 secureTextEntry
                 className="px-4 py-3 text-base"
@@ -139,19 +150,23 @@ export default function LoginScreen() {
             </Input>
 
             {error && (
-              <Text className="text-center text-danger-text text-sm" style={{ fontFamily: Fonts.sans }}>
+              <Text accessibilityRole="alert" className="text-center text-danger-text text-sm" style={{ fontFamily: Fonts.sans }}>
                 {error}
               </Text>
             )}
 
             <Button variant="default" size="lg" className="rounded-xl mt-1" onPress={submit} disabled={busy}>
               {busy ? (
-                <ActivityIndicator color={theme.textSecondary} />
+                <ActivityIndicator color={Nord.nord6} />
               ) : (
                 <ButtonText style={{ fontFamily: Fonts.sans }}>Sign in</ButtonText>
               )}
             </Button>
-            <Pressable onPress={() => router.push('/signup')} className="items-center py-1.5">
+            <Pressable
+              onPress={() => router.push('/signup')}
+              className="min-h-11 items-center justify-center py-1.5"
+              accessibilityRole="link"
+            >
               <Text className="text-primary-text text-sm font-bold" style={{ fontFamily: Fonts.sans }}>
                 New here? Create an account
               </Text>

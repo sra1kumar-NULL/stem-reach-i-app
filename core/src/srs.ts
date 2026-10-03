@@ -33,7 +33,15 @@ export const INITIAL_STATE: ReviewState = {
 };
 
 function clampInterval(days: number): number {
+  if (!Number.isFinite(days)) return 0;
   return Math.max(0, Math.min(MAX_INTERVAL_DAYS, Math.round(days)));
+}
+
+/** Hard: a pass with effort — grows slowly (≥ +1 day, ~×1.2) so it never sticks at 1 day forever. */
+function hardInterval(state: ReviewState): number {
+  const prev = Number.isFinite(state.intervalDays) ? state.intervalDays : 0;
+  if (prev < 1) return 1;
+  return clampInterval(Math.max(prev + 1, Math.round(prev * 1.2)));
 }
 
 function goodInterval(state: ReviewState): number {
@@ -46,7 +54,7 @@ function goodInterval(state: ReviewState): number {
 
 export function applyGrade(state: ReviewState, grade: SrsGrade): ReviewState {
   const ease = clampEase(state.ease);
-  const reps = Math.max(0, state.repetitions);
+  const reps = Number.isFinite(state.repetitions) ? Math.max(0, state.repetitions) : 0;
 
   switch (grade) {
     case "again":
@@ -54,7 +62,7 @@ export function applyGrade(state: ReviewState, grade: SrsGrade): ReviewState {
     case "hard":
       return {
         ease: clampEase(ease - 0.15),
-        intervalDays: clampInterval(Math.max(1, state.intervalDays * 1.2)),
+        intervalDays: hardInterval(state),
         repetitions: reps + 1,
       };
     case "good":
@@ -68,7 +76,9 @@ export function applyGrade(state: ReviewState, grade: SrsGrade): ReviewState {
   }
 }
 
+/** Clamps ease into [MIN_EASE, MAX_EASE]; a non-finite ease (NaN from a corrupt row) resets to INITIAL_EASE. */
 export function clampEase(ease: number): number {
+  if (!Number.isFinite(ease)) return INITIAL_EASE;
   return Math.max(MIN_EASE, Math.min(MAX_EASE, ease));
 }
 

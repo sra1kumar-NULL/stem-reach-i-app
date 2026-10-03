@@ -134,7 +134,7 @@ export function ThemeSheet({ visible, onClose }: ThemeSheetProps): JSX.Element |
                   </Box>
 
                   {/* Same size when hidden so all rows stay aligned. */}
-                  <Ionicons name="checkmark-circle" size={22} color={selected ? theme.primaryText : 'transparent'} />
+                  <Ionicons name="checkmark-circle" size={22} color={theme.primaryText} style={{ opacity: selected ? 1 : 0 }} />
                 </Pressable>
               );
             })}

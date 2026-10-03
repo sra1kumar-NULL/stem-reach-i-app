@@ -1,12 +1,10 @@
 import { Hono } from "hono";
-import { and, eq, inArray, lte, notInArray, sql } from "drizzle-orm";
+import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { dailySetSections, dailySets, sections, chapters, questions, reviewStates, submissions } from "@stemreach/core/db/schema";
+import { answeredInSet, dueReviews, MAX_QUEUE } from "../lib/reviews.js";
 import { requireRole } from "../lib/auth.js";
 import type { AppContext } from "../lib/http.js";
-import { DAILY_PER_SECTION, type FeedResponse, type ProgressDto, type QuestionDto } from "@stemreach/core";
-
-/** Hard cap on the whole daily queue (reviews take priority). */
-const MAX_QUEUE = 30;
+import { DAILY_PER_SECTION, todayInTz, type FeedResponse, type ProgressDto, type QuestionDto } from "@stemreach/core";
 
 export function routes(ctx: AppContext): Hono {
   const app = new Hono();
@@ -14,7 +12,7 @@ export function routes(ctx: AppContext): Hono {
   // GET /api/feed/today — the student's daily revision set (LLD §2)
   app.get("/today", requireRole("student"), async (c) => {
     const studentId = c.var.user.id;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayInTz(ctx.timezone);
 
     const empty: FeedResponse = {
       empty: true,
@@ -50,7 +48,6 @@ export function routes(ctx: AppContext): Hono {
       .groupBy(questions.sectionId);
     const targetPerSection = new Map(target.map((t) => [t.sectionId, Math.min(t.count, DAILY_PER_SECTION)]));
     const total = [...targetPerSection.values()].reduce((a, b) => a + b, 0);
-    if (total === 0) return c.json(empty);
 
     // Precise per-section answered counts (current sections only), then sample the remainder per section.
     const answeredBySection = new Map<string, number>();
@@ -67,16 +64,13 @@ export function routes(ctx: AppContext): Hono {
     const sampled: { question: typeof questions.$inferSelect; isReview: boolean }[] = [];
     const queuedIds = new Set<string>();
 
-    // 1) Due reviews first — oldest first, capped by MAX_QUEUE.
-    const dueRows = await ctx.db
-      .select({ question: questions, review: reviewStates })
-      .from(reviewStates)
-      .innerJoin(questions, eq(questions.id, reviewStates.questionId))
-      .where(and(eq(reviewStates.studentId, studentId), lte(reviewStates.dueDate, today), eq(questions.enabled, true), inArray(questions.sectionId, sectionIds)))
-      .orderBy(reviewStates.dueDate)
-      .limit(MAX_QUEUE);
+    // 1) Due reviews first — oldest first, capped by MAX_QUEUE. From ANY
+    // section (a card learned last week stays due even when its section is not
+    // re-activated today), minus everything already answered in today's set
+    // (any section) so an "again" card is not re-served in a loop.
+    const answeredAnySection = await answeredInSet(ctx.db, studentId, set.id);
+    const dueRows = await dueReviews(ctx.db, studentId, today, answeredAnySection);
     for (const row of dueRows) {
-      if (answeredIds.has(row.question.id)) continue;
       sampled.push({ question: row.question, isReview: true });
       queuedIds.add(row.question.id);
     }
@@ -89,9 +83,9 @@ export function routes(ctx: AppContext): Hono {
       .select({ questionId: reviewStates.questionId })
       .from(reviewStates)
       .where(eq(reviewStates.studentId, studentId));
-    const newExclude = [...new Set([...srsRows.map((r) => r.questionId), ...answeredIds])];
+    const newExclude = [...new Set([...srsRows.map((r) => r.questionId), ...answeredAnySection])];
     const reviewQuestionIds = dueRows.map((r) => r.question.id);
-    const seenIds = [...answeredIds, ...reviewQuestionIds];
+    const seenIds = [...new Set([...answeredAnySection, ...reviewQuestionIds])];
     const newPool = await ctx.db
       .select()
       .from(questions)
@@ -160,6 +154,11 @@ export function routes(ctx: AppContext): Hono {
       }
     }
 
+    if (total === 0 && sampled.length === 0) return c.json(empty);
+
+    // Labels for every served question, including due reviews from sections
+    // that are not activated today.
+    const labelSectionIds = [...new Set([...sectionIds, ...sampled.map((s) => s.question.sectionId)])];
     const secRows = await ctx.db
       .select({
         id: sections.id,
@@ -169,7 +168,7 @@ export function routes(ctx: AppContext): Hono {
       })
       .from(sections)
       .innerJoin(chapters, eq(sections.chapterId, chapters.id))
-      .where(inArray(sections.id, sectionIds));
+      .where(inArray(sections.id, labelSectionIds));
 
     const progress: ProgressDto = {
       answered: answeredIds.size,

@@ -35,6 +35,15 @@ export function normalizeDeckId(value: unknown): string | null {
 }
 
 /**
+ * Collision-resistant id for a new local deck/card. `Date.now()` alone
+ * repeats when two rows are inserted in the same millisecond (deck + its
+ * starter card, or a quick double add), which fails the PRIMARY KEY.
+ */
+export function newLocalId(prefix: 'deck' | 'card'): string {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
  * Single-flight connection + schema init. Every screen used to open a fresh
  * connection and re-run the DDL on each call, so concurrent callers (deck-list
  * focus reload racing the create-deck handler, review's queries racing a grade)
