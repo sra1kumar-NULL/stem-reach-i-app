@@ -23,6 +23,7 @@ import { useToast } from '@/components/toast';
 import { Accents, Nord, Type } from '@/constants/theme';
 import { useConfirmSignOut } from '@/hooks/use-confirm-sign-out';
 import { useTheme } from '@/hooks/use-theme';
+import { toFriendlyError } from '@/lib/friendly-error';
 import type { SyllabusResponse } from '@stemreach/core';
 
 interface Row {
@@ -52,7 +53,7 @@ export default function ActivateScreen() {
         setTodaySections(active);
         setSelected(new Set(active));
       })
-      .catch((e) => setError(e instanceof Error ? e.message : 'failed to load'));
+      .catch((e) => setError(toFriendlyError(e, 'Could not load the syllabus.')));
   }, []);
 
   useEffect(load, [load]);
@@ -100,7 +101,7 @@ export default function ActivateScreen() {
       showToast(`Revision activated for ${res.date} — ${res.sections.length} section(s), ${total} questions!`);
       setTodaySections(new Set(res.sections.map((s) => s.id)));
     } catch (e) {
-      showToast(e instanceof Error ? e.message : 'activation failed', 'error');
+      showToast(toFriendlyError(e, 'Activation failed. Please try again.'), 'error');
     } finally {
       setBusy(false);
     }
@@ -145,7 +146,7 @@ export default function ActivateScreen() {
             <UIText className="text-sm text-foreground" style={Type.body}>
               {error}
             </UIText>
-            <Button variant="default" size="sm" className="self-start rounded-lg" onPress={load}>
+            <Button variant="default" className="min-h-11 self-start rounded-lg" onPress={load}>
               <ButtonText style={Type.bodyBold}>Retry</ButtonText>
             </Button>
           </Box>
@@ -162,7 +163,13 @@ export default function ActivateScreen() {
               const someOn = chapter.sections.some((s) => selected.has(s.id));
               return (
                 <Box className="mb-2">
-                  <Pressable onPress={() => toggleChapter(chapter.id)} style={({ pressed }) => [styles.chapterHead, pressed && { opacity: 0.7 }]}>
+                  <Pressable
+                    onPress={() => toggleChapter(chapter.id)}
+                    style={({ pressed }) => [styles.chapterHead, pressed && { opacity: 0.7 }]}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: allOn ? true : someOn ? 'mixed' : false }}
+                    accessibilityLabel={`${chapter.name}, all sections`}
+                  >
                     <View style={[styles.dot, { backgroundColor: allOn ? Accents.success : someOn ? Accents.warn : Accents.border }]} />
                     <UIText className="flex-1 text-base font-bold text-foreground" style={Type.bodyBold}>
                       {chapter.name}
@@ -178,6 +185,9 @@ export default function ActivateScreen() {
                           key={s.id}
                           onPress={() => toggle(s.id)}
                           style={({ pressed }) => [styles.row, isOn && styles.rowOn, pressed && { opacity: 0.8 }]}
+                          accessibilityRole="checkbox"
+                          accessibilityState={{ checked: isOn }}
+                          accessibilityLabel={`${chapter.name} — ${s.section_no}, ${s.enabled_question_count} questions`}
                         >
                           <View style={[styles.dot, { backgroundColor: isOn ? Accents.success : Accents.border }]} />
                           <Box className="flex-1 gap-0.5">
@@ -188,7 +198,7 @@ export default function ActivateScreen() {
                               {s.enabled_question_count} questions{wasToday && !isOn ? ' · was active today' : ''}
                             </UIText>
                           </Box>
-                          <Text style={[styles.check, { color: isOn ? theme.successText : 'transparent' }]}>✓</Text>
+                          <Text style={[styles.check, { color: theme.successText, opacity: isOn ? 1 : 0 }]}>✓</Text>
                         </Pressable>
                       );
                     })}
@@ -196,11 +206,13 @@ export default function ActivateScreen() {
                 </Box>
               );
             }}
-            contentContainerStyle={{ paddingBottom: 140 }}
+            style={{ flex: 1 }}
+            contentContainerStyle={{ paddingBottom: 16 }}
           />
         )}
 
-        <Box className="gap-2 py-2" style={styles.footer}>
+        {/* Opaque, in-flow footer: rows used to scroll visibly under its text and buttons. */}
+        <Box className="gap-2 border-t border-border bg-background pt-2" style={styles.footer}>
           <UIText className="text-sm font-bold text-foreground" style={Type.bodyBold}>
             {selected.size} selected · {selectedQuestionCount} questions
           </UIText>
@@ -278,6 +290,7 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   signoutBtn: {
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -289,6 +302,7 @@ const styles = StyleSheet.create({
   },
   signoutText: { fontSize: 13, fontWeight: '600' },
   chapterHead: {
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
@@ -307,7 +321,7 @@ const styles = StyleSheet.create({
   rowOn: { borderColor: Accents.success, backgroundColor: Accents.successSoft },
   dot: { width: 10, height: 10, borderRadius: 5 },
   check: { fontSize: 18, fontWeight: '800' },
-  footer: { position: 'absolute', left: 16, right: 16, bottom: 12 },
+  footer: { marginHorizontal: -16, paddingHorizontal: 16 },
   navRow: { flexDirection: 'row', justifyContent: 'space-around' },
   navLink: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8 },
 });

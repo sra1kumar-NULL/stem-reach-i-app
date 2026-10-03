@@ -35,11 +35,12 @@ const buttonStyle = tva({
       ghost: 'data-[hover=true]:bg-accent data-[active=true]:bg-accent dark:data-[hover=true]:bg-accent/50 dark:data-[active=true]:bg-accent/50',
       link: 'text-primary underline-offset-4 data-[hover=true]:underline data-[active=true]:underline',
     },
+    // Every size meets the 44pt minimum touch target (min-h-11 = 44px).
     size: {
-      default: 'px-4 py-2',
-      sm: 'min-h-8 rounded-md px-3 text-xs',
-      lg: 'min-h-10 rounded-md px-8',
-      icon: 'min-h-9 min-w-9',
+      default: 'min-h-11 px-4 py-2',
+      sm: 'min-h-11 rounded-md px-3 text-xs',
+      lg: 'min-h-11 rounded-md px-8',
+      icon: 'min-h-11 min-w-11',
     },
   },
 });

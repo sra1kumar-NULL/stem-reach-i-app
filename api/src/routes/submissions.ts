@@ -1,13 +1,15 @@
 import { Hono } from "hono";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, lte, sql } from "drizzle-orm";
 import { ZodError } from "zod";
 import { dailySetSections, dailySets, questions, reviewStates, sections, streaks, submissions } from "@stemreach/core/db/schema";
 import { requireRole } from "../lib/auth.js";
 import type { AppContext } from "../lib/http.js";
-import { badRequest, notFound } from "../lib/http.js";
+import { badRequest, conflict, notFound } from "../lib/http.js";
 import {
   DAILY_PER_SECTION,
   SubmissionRequest,
+  addDaysIso,
+  todayInTz,
   applyGrade,
   dueDateFor,
   selfEvalIsCorrect,
@@ -78,9 +80,8 @@ async function progressFor(
  * conflicting inserts and re-reads the committed row before applying the SET,
  * so the streak is counted exactly once.
  */
-async function touchStreak(db: DbHandle, studentId: string, now: Date = new Date()): Promise<void> {
-  const today = now.toISOString().slice(0, 10);
-  const yStr = new Date(now.getTime() - 86_400_000).toISOString().slice(0, 10);
+async function touchStreak(db: DbHandle, studentId: string, today: string, now: Date = new Date()): Promise<void> {
+  const yStr = addDaysIso(today, -1);
 
   // Streak carried over from the existing row: unchanged when the last active
   // day is today, +1 when it was yesterday, reset to 1 after a gap (a NULL
@@ -117,9 +118,9 @@ async function touchReviewState(
   studentId: string,
   questionId: string,
   grade: SelfEval,
+  today: string,
   now: Date = new Date(),
 ): Promise<void> {
-  const today = now.toISOString().slice(0, 10);
   const mapped = SRS_GRADE_BY_SELF_EVAL[grade] ?? "again";
 
   const [existing] = await db.select().from(reviewStates).where(and(eq(reviewStates.studentId, studentId), eq(reviewStates.questionId, questionId))).limit(1);
@@ -148,6 +149,25 @@ async function touchReviewState(
     .onConflictDoUpdate({ target: [reviewStates.studentId, reviewStates.questionId], set: values });
 }
 
+async function findSubmission(db: DbHandle, studentId: string, questionId: string, dailySetId: string) {
+  const [row] = await db
+    .select()
+    .from(submissions)
+    .where(and(eq(submissions.studentId, studentId), eq(submissions.questionId, questionId), eq(submissions.dailySetId, dailySetId)))
+    .limit(1);
+  return row;
+}
+
+/** True when the student has an SRS row for this question that is due today or earlier. */
+async function isDueReview(db: DbHandle, studentId: string, questionId: string, today: string): Promise<boolean> {
+  const [row] = await db
+    .select({ questionId: reviewStates.questionId })
+    .from(reviewStates)
+    .where(and(eq(reviewStates.studentId, studentId), eq(reviewStates.questionId, questionId), lte(reviewStates.dueDate, today)))
+    .limit(1);
+  return row != null;
+}
+
 export function routes(ctx: AppContext): Hono {
   const app = new Hono();
 
@@ -155,15 +175,10 @@ export function routes(ctx: AppContext): Hono {
   app.post("/", requireRole("student"), async (c) => {
     const body = await readBody(c);
     const studentId = c.var.user.id;
+    const today = todayInTz(ctx.timezone);
 
     const [set] = await ctx.db.select().from(dailySets).where(eq(dailySets.id, body.daily_set_id)).limit(1);
     if (!set) throw notFound("daily set not found");
-
-    const setSections = await ctx.db
-      .select({ id: dailySetSections.sectionId })
-      .from(dailySetSections)
-      .where(eq(dailySetSections.dailySetId, set.id));
-    const sectionIds = setSections.map((s) => s.id);
 
     const [question] = await ctx.db
       .select()
@@ -171,62 +186,70 @@ export function routes(ctx: AppContext): Hono {
       .where(eq(questions.id, body.question_id))
       .limit(1);
     if (!question) throw notFound("question not found");
-    if (!sectionIds.includes(question.sectionId)) throw badRequest("question is not part of this daily set");
 
-    // Idempotency: return the stored result if already answered
-    const [existing] = await ctx.db
-      .select()
-      .from(submissions)
-      .where(
-        and(eq(submissions.studentId, studentId), eq(submissions.questionId, body.question_id), eq(submissions.dailySetId, set.id)),
-      )
-      .limit(1);
+    const setSections = await ctx.db
+      .select({ id: dailySetSections.sectionId })
+      .from(dailySetSections)
+      .where(eq(dailySetSections.dailySetId, set.id));
+    const sectionIds = setSections.map((s) => s.id);
+
+    // Idempotency: an already-recorded answer replays its stored result (even
+    // across midnight or a later disable) — the checks below gate NEW answers only.
+    const existing = await findSubmission(ctx.db, studentId, question.id, set.id);
 
     let isCorrect: boolean;
     if (existing) {
       isCorrect = existing.isCorrect === true;
     } else {
+      // Only today's set accepts new answers: a stale/forged daily_set_id used
+      // to let students score (and extend streaks) on past or future days.
+      if (set.setDate !== today) throw conflict("this revision set is not today's — refresh to get today's questions");
+      if (!question.enabled) throw badRequest("question is no longer available");
+      // In today's activated sections, or a flashcard the student has due for
+      // review (due reviews are served from any section — see lib/reviews.ts).
+      if (!sectionIds.includes(question.sectionId)) {
+        const dueReview =
+          question.qtype === "flashcard" ? await isDueReview(ctx.db, studentId, question.id, today) : false;
+        if (!dueReview) throw badRequest("question is not part of this daily set");
+      }
+
       // Validate and grade BEFORE the transaction so a 400 never opens one;
       // the transaction below only writes.
+      let submission: typeof submissions.$inferInsert;
+      let selfEval: SelfEval | null = null;
       if (question.qtype === "mcq") {
         if (body.selected_option == null) throw badRequest("mcq requires selected_option");
         isCorrect = body.selected_option === question.correctOption;
-        const submission = {
-          studentId,
-          questionId: question.id,
-          dailySetId: set.id,
-          selectedOption: body.selected_option,
-          isCorrect,
-        };
-        // One transaction: if the streak write fails, the submission row rolls
-        // back too, so the retry re-grades instead of returning 200 with no
-        // streak behind it.
-        await ctx.db.transaction(async (tx) => {
-          await tx.insert(submissions).values(submission);
-          await touchStreak(tx, studentId);
-        });
+        submission = { studentId, questionId: question.id, dailySetId: set.id, selectedOption: body.selected_option, isCorrect };
       } else {
         if (body.self_eval == null) throw badRequest("flashcard requires self_eval");
-        const selfEval = body.self_eval;
+        selfEval = body.self_eval;
         isCorrect = selfEvalIsCorrect(selfEval);
         // Legacy storage values (existing PG enum); precise grade lives in review_states (SRS).
         const storedEval: "got_it" | "need_practice" =
           selfEval === "got_it" || selfEval === "good" || selfEval === "easy" ? "got_it" : "need_practice";
-        const submission = {
-          studentId,
-          questionId: question.id,
-          dailySetId: set.id,
-          selfEval: storedEval,
-          isCorrect,
-        };
-        // One transaction: a failure in the SRS or streak write rolls the
-        // submission back, so a retry re-runs the whole path (idempotency only
-        // kicks in once ALL three writes have committed together).
-        await ctx.db.transaction(async (tx) => {
-          await tx.insert(submissions).values(submission);
-          await touchReviewState(tx, studentId, question.id, selfEval);
-          await touchStreak(tx, studentId);
-        });
+        submission = { studentId, questionId: question.id, dailySetId: set.id, selfEval: storedEval, isCorrect };
+      }
+
+      // One transaction: if the SRS or streak write fails, the submission row
+      // rolls back too, so a retry re-runs the whole path. The insert is
+      // conflict-safe: a concurrent duplicate (double tap, retry racing the
+      // first request) used to hit the unique index and 500; now the loser
+      // inserts nothing, skips the side effects, and replays the winner's row.
+      const won = await ctx.db.transaction(async (tx) => {
+        const inserted = await tx
+          .insert(submissions)
+          .values(submission)
+          .onConflictDoNothing({ target: [submissions.studentId, submissions.questionId, submissions.dailySetId] })
+          .returning({ id: submissions.id });
+        if (inserted.length === 0) return false;
+        if (selfEval != null) await touchReviewState(tx, studentId, question.id, selfEval, today);
+        await touchStreak(tx, studentId, today);
+        return true;
+      });
+      if (!won) {
+        const winner = await findSubmission(ctx.db, studentId, question.id, set.id);
+        isCorrect = winner?.isCorrect === true;
       }
     }
 

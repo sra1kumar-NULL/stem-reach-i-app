@@ -4,7 +4,7 @@ import { dailySetSections, dailySets, profiles, questions, reviewStates, section
 import { requireRole } from "../lib/auth.js";
 import type { AppContext } from "../lib/http.js";
 import { badRequest } from "../lib/http.js";
-import { DAILY_PER_SECTION, type ParticipationReport, type PerformanceReport } from "@stemreach/core";
+import { addDaysIso, DAILY_PER_SECTION, todayInTz, type ParticipationReport, type PerformanceReport } from "@stemreach/core";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -14,7 +14,7 @@ export function routes(ctx: AppContext): Hono {
 
   // GET /api/reports/participation?date=YYYY-MM-DD&class_section=10A
   app.get("/participation", requireRole("teacher"), async (c) => {
-    const date = c.req.query("date") ?? new Date().toISOString().slice(0, 10);
+    const date = c.req.query("date") ?? todayInTz(ctx.timezone);
     if (!DATE_RE.test(date)) throw badRequest("date must be YYYY-MM-DD");
     const classSection = c.req.query("class_section");
 
@@ -88,9 +88,12 @@ export function routes(ctx: AppContext): Hono {
     if (to && !DATE_RE.test(to)) throw badRequest("to must be YYYY-MM-DD");
     if (sectionId && !UUID_RE.test(sectionId)) throw badRequest("section_id must be a UUID");
 
+    // from/to are school-calendar days: compare each answer's date in the
+    // school timezone (a bare ::date compare used the DB session's UTC day).
+    const answeredDay = sql`(${submissions.answeredAt} AT TIME ZONE ${ctx.timezone})::date`;
     const conds: SQL[] = [];
-    if (from) conds.push(sql`${submissions.answeredAt} >= ${from}::date`);
-    if (to) conds.push(sql`${submissions.answeredAt} < (${to}::date + interval '1 day')`);
+    if (from) conds.push(sql`${answeredDay} >= ${from}::date`);
+    if (to) conds.push(sql`${answeredDay} <= ${to}::date`);
     if (sectionId) conds.push(eq(sections.id, sectionId));
     const where = conds.length > 0 ? and(...conds) : undefined;
 
@@ -110,8 +113,8 @@ export function routes(ctx: AppContext): Hono {
       .orderBy(sections.sectionNo);
 
     const studentConds: SQL[] = [];
-    if (from) studentConds.push(sql`${submissions.answeredAt} >= ${from}::date`);
-    if (to) studentConds.push(sql`${submissions.answeredAt} < (${to}::date + interval '1 day')`);
+    if (from) studentConds.push(sql`${answeredDay} >= ${from}::date`);
+    if (to) studentConds.push(sql`${answeredDay} <= ${to}::date`);
     if (sectionId) studentConds.push(eq(questions.sectionId, sectionId));
     const studentWhere = studentConds.length > 0 ? and(...studentConds) : undefined;
 
@@ -132,16 +135,12 @@ export function routes(ctx: AppContext): Hono {
     const body: PerformanceReport = {
       per_section: rows.map((r) => ({ section_id: r.sectionId, section_no: r.sectionNo, name: r.name, attempts: r.attempts, accuracy: Number(r.accuracy) })),
       per_student: studentRows.map((r) => ({ id: r.id, name: r.name, avg_accuracy: Number(r.avgAccuracy), questions_answered: r.questionsAnswered })),
-      srs: await srsStats(ctx, today(), sectionId),
+      srs: await srsStats(ctx, todayInTz(ctx.timezone), sectionId),
     };
     return c.json(body);
   });
 
   return app;
-}
-
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
 }
 
 /**
@@ -150,7 +149,7 @@ function today(): string {
  * `sectionId` when provided.
  */
 async function srsStats(ctx: AppContext, today: string, sectionId?: string) {
-  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const tomorrow = addDaysIso(today, 1);
   const [row] = await ctx.db
     .select({
       dueToday: sql<number>`count(*) filter (where ${reviewStates.dueDate} <= ${today})::int`,

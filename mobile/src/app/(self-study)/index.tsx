@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BackButton } from '@/components/back-button';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { useToast } from '@/components/toast';
 import { Box } from '@/components/ui/box';
@@ -23,7 +24,8 @@ import { Input, InputField } from '@/components/ui/input';
 import { Text as UIText } from '@/components/ui/text';
 import { Accents, Fonts, Nord, onAccent, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { getSelfStudyDb, type LocalDeck } from '@/lib/self-study-db';
+import { getSelfStudyDb, newLocalId, type LocalDeck } from '@/lib/self-study-db';
+import { localDateString } from '@/lib/sm2';
 
 /** Nord Polar Night scrim (nord0 @ 60%) — reads the same in light and dark (confirm-sheet idiom). */
 const SCRIM = `${Nord.nord0}99`;
@@ -31,12 +33,15 @@ const SCRIM = `${Nord.nord0}99`;
 interface DeckRow extends LocalDeck {
   /** Cards whose due_date is today or earlier. */
   due: number;
+  /** All cards in the deck. */
+  cards: number;
 }
 
 /**
  * Self-study home: the deck list (the PR2 stub and its missing `/decks`
- * route merged into one screen). 100% local SQLite — no API client, no auth
- * gate inside the group.
+ * route merged into one screen). A deck opens its detail screen (`deck.tsx`:
+ * cards, stats, review). 100% local SQLite — no API client, no auth gate
+ * inside the group.
  */
 export default function SelfStudyScreen() {
   const theme = useTheme();
@@ -60,13 +65,19 @@ export default function SelfStudyScreen() {
         const rows = await db.getAllAsync<LocalDeck>(
           'SELECT id, title, description, created_at FROM local_decks ORDER BY created_at DESC',
         );
-        const today = new Date().toISOString().slice(0, 10);
-        const dueRows = await db.getAllAsync<{ deck_id: string; due: number }>(
-          'SELECT deck_id, COUNT(*) AS due FROM local_cards WHERE due_date <= ? GROUP BY deck_id',
+        const today = localDateString();
+        const countRows = await db.getAllAsync<{ deck_id: string; due: number; cards: number }>(
+          'SELECT deck_id, SUM(CASE WHEN due_date <= ? THEN 1 ELSE 0 END) AS due, COUNT(*) AS cards FROM local_cards GROUP BY deck_id',
           [today],
         );
-        const dueByDeck = new Map(dueRows.map((d) => [d.deck_id, d.due]));
-        setDecks(rows.map((row) => ({ ...row, due: dueByDeck.get(row.id) ?? 0 })));
+        const countsByDeck = new Map(countRows.map((d) => [d.deck_id, d]));
+        setDecks(
+          rows.map((row) => ({
+            ...row,
+            due: countsByDeck.get(row.id)?.due ?? 0,
+            cards: countsByDeck.get(row.id)?.cards ?? 0,
+          })),
+        );
       } catch (e) {
         setError(e instanceof Error ? e.message : 'failed to load decks');
       } finally {
@@ -77,6 +88,7 @@ export default function SelfStudyScreen() {
 
   // Reload on every focus so due-counts stay fresh after a review session.
   useFocusEffect(useCallback(() => load(), [load]));
+
 
   const openCreate = () => {
     setTitle('');
@@ -92,26 +104,15 @@ export default function SelfStudyScreen() {
     setCreateError(null);
     try {
       const db = await getSelfStudyDb();
-      const deckId = `deck-${Date.now()}`;
-      const today = new Date().toISOString().slice(0, 10);
+      const deckId = newLocalId('deck');
       await db.runAsync(
         'INSERT INTO local_decks (id, title, description, created_at) VALUES (?, ?, ?, ?)',
-        [deckId, trimmedTitle, description.trim() || null, today],
-      );
-      // Seed a starter card so a fresh deck is never empty on review.
-      await db.runAsync(
-        'INSERT INTO local_cards (id, deck_id, front, back, interval, repetition, ease_factor, due_date) VALUES (?, ?, ?, ?, 0, 0, 2.5, ?)',
-        [
-          `card-${Date.now()}`,
-          deckId,
-          `Welcome to ${trimmedTitle}`,
-          'Tap Show Answer, then grade yourself with Again, Hard, Good, or Easy — your next review date follows your grade.',
-          today,
-        ],
+        [deckId, trimmedTitle, description.trim() || null, new Date().toISOString()],
       );
       setModalVisible(false);
       showToast('Deck created');
-      load();
+      // Straight to the new deck so the user can add its first cards.
+      router.push({ pathname: '/(self-study)/deck', params: { deckId } });
     } catch (e) {
       // In-modal: the toast mounts in the root window, behind this Modal's
       // own Android window, so a toast-only failure is invisible to the user.
@@ -126,7 +127,9 @@ export default function SelfStudyScreen() {
     <Box className="flex-1 bg-background">
       <SafeAreaView style={styles.safe}>
         <View style={styles.headerRow}>
-          <Heading accessibilityRole="header" className="text-2xl" style={Type.heading}>
+          {/* Reached from the student feed or login ("Study offline"); a cold deep link falls back to the auth gate. */}
+          <BackButton fallback="/" iconOnly />
+          <Heading accessibilityRole="header" className="flex-1 text-2xl" style={Type.heading}>
             Self Study
           </Heading>
           <View style={styles.headerActions}>
@@ -179,10 +182,10 @@ export default function SelfStudyScreen() {
             }
             renderItem={({ item }) => (
               <Pressable
-                onPress={() => router.push({ pathname: '/(self-study)/review', params: { deckId: item.id } })}
+                onPress={() => router.push({ pathname: '/(self-study)/deck', params: { deckId: item.id } })}
                 style={({ pressed }) => (pressed ? styles.rowPressed : null)}
                 accessibilityRole="button"
-                accessibilityLabel={`${item.title}, ${item.due} due`}
+                accessibilityLabel={`${item.title}, ${item.cards} cards, ${item.due} due`}
                 className="min-h-11 flex-row items-center gap-3 rounded-2xl bg-card p-3"
               >
                 <Box className="flex-1 gap-0.5">
@@ -190,10 +193,13 @@ export default function SelfStudyScreen() {
                     {item.title}
                   </UIText>
                   {item.description ? (
-                    <UIText className="text-xs text-muted-foreground" style={Type.body}>
+                    <UIText className="text-xs text-muted-foreground" style={Type.body} numberOfLines={1}>
                       {item.description}
                     </UIText>
                   ) : null}
+                  <UIText className="text-xs text-muted-foreground" style={Type.body}>
+                    {item.cards} {item.cards === 1 ? 'card' : 'cards'}
+                  </UIText>
                 </Box>
                 <Box className="rounded-full bg-primary-soft px-2.5 py-1">
                   <UIText className="text-xs font-bold text-primary-text" style={Type.bodyBold}>
@@ -231,6 +237,7 @@ export default function SelfStudyScreen() {
                     value={title}
                     onChangeText={setTitle}
                     placeholder="Deck title"
+                    accessibilityLabel="Deck title"
                     placeholderTextColor={theme.textSecondary}
                     autoCapitalize="words"
                     className="px-4 py-3 text-base"
@@ -243,6 +250,7 @@ export default function SelfStudyScreen() {
                     value={description}
                     onChangeText={setDescription}
                     placeholder="Description (optional)"
+                    accessibilityLabel="Deck description, optional"
                     placeholderTextColor={theme.textSecondary}
                     multiline
                     className="px-4 py-3 text-base"
@@ -293,7 +301,7 @@ export default function SelfStudyScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, padding: 16, gap: 12 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   rowPressed: { opacity: 0.7 },
   modalRoot: { flex: 1, justifyContent: 'center', padding: 20 },

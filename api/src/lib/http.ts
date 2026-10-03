@@ -8,6 +8,10 @@ export interface AppContext {
   supabase: SupabaseClient;
   serviceRole: SupabaseClient;
   logger: Console;
+  /** IANA zone defining the school's "today" (APP_TIMEZONE, validated in lib/env.ts). */
+  timezone: string;
+  /** TEACHER_INVITE_CODE; undefined disables teacher self-signup. */
+  teacherInviteCode?: string;
 }
 
 export class HttpError extends Error {

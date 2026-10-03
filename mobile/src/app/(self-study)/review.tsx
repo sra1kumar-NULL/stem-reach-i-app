@@ -1,9 +1,9 @@
-import { Ionicons } from '@expo/vector-icons';
-import { Link, router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BackButton } from '@/components/back-button';
 import { hapticFlip, hapticLight, hapticSuccess } from '@/components/haptics';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { useToast } from '@/components/toast';
@@ -14,12 +14,13 @@ import { Heading } from '@/components/ui/heading';
 import { Text as UIText } from '@/components/ui/text';
 import { Accents, onAccent, Type } from '@/constants/theme';
 import { getSelfStudyDb, normalizeDeckId, type LocalCard } from '@/lib/self-study-db';
-import { calculateSM2, type Grade } from '@/lib/sm2';
+import { calculateSM2, localDateString, type ReviewButton } from '@/lib/sm2';
 
 /**
  * Flashcard review for one deck (local SQLite + SM-2). `deckId` is validated
  * at the receiving screen: a missing/empty param renders an error state and
- * never reaches the database.
+ * never reaches the database. Only cards due today (local calendar) are
+ * queued — reviewing a card before its due date would defeat the spacing.
  */
 export default function ReviewScreen() {
   const params = useLocalSearchParams<{ deckId?: string | string[] }>();
@@ -31,6 +32,10 @@ export default function ReviewScreen() {
   const [loading, setLoading] = useState(deckId.length > 0);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Cards graded Again this session — due again today (interval 0), offered for another pass. */
+  const [againCount, setAgainCount] = useState(0);
+  /** Cards in the deck at all, and the earliest future due date — for the nothing-due state. */
+  const [deckInfo, setDeckInfo] = useState<{ total: number; nextDue: string | null }>({ total: 0, nextDue: null });
   const announced = useRef(-1);
 
   const load = useCallback(() => {
@@ -43,15 +48,23 @@ export default function ReviewScreen() {
     setLoading(true);
     setError(null);
     setIdx(0);
+    setAgainCount(0);
     setRevealed(false);
     (async () => {
       try {
         const db = await getSelfStudyDb();
+        const today = localDateString();
         const rows = await db.getAllAsync<LocalCard>(
-          'SELECT * FROM local_cards WHERE deck_id = ? ORDER BY due_date ASC',
-          [deckId],
+          'SELECT * FROM local_cards WHERE deck_id = ? AND due_date <= ? ORDER BY due_date ASC',
+          [deckId, today],
         );
+        const info = await db.getFirstAsync<{ total: number; next_due: string | null }>(
+          'SELECT COUNT(*) AS total, MIN(CASE WHEN due_date > ? THEN due_date END) AS next_due FROM local_cards WHERE deck_id = ?',
+          [today, deckId],
+        );
+        announced.current = -1;
         setCards(rows);
+        setDeckInfo({ total: info?.total ?? 0, nextDue: info?.next_due ?? null });
       } catch (e) {
         setCards([]);
         setError(e instanceof Error ? e.message : 'failed to load cards');
@@ -77,28 +90,36 @@ export default function ReviewScreen() {
     );
   }, [idx, cards.length, loading, error]);
 
+  /** Back to wherever review was opened from (the deck screen); deck list on a cold deep link. */
+  const goBack = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/(self-study)');
+  };
+
   const reveal = () => {
     hapticFlip();
     setRevealed(true);
   };
 
-  const handleGrade = async (grade: Grade) => {
+  const handleGrade = async (button: ReviewButton) => {
     const current = cards[idx];
     if (!current || busy) return;
     setBusy(true);
     try {
       const next = calculateSM2(
         { interval: current.interval, repetition: current.repetition, ease_factor: current.ease_factor },
-        grade,
+        button,
+        localDateString(),
       );
       const db = await getSelfStudyDb();
       await db.runAsync(
         'UPDATE local_cards SET interval = ?, repetition = ?, ease_factor = ?, due_date = ? WHERE id = ?',
         [next.interval, next.repetition, next.ease_factor, next.due_date, current.id],
       );
-      if (grade >= 3) hapticSuccess();
+      if (button !== 'again') hapticSuccess();
       else hapticLight();
       setRevealed(false);
+      if (button === 'again') setAgainCount((n) => n + 1);
       setIdx((i) => i + 1);
     } catch (e) {
       showToast(e instanceof Error ? e.message : 'failed to save your grade', 'error');
@@ -130,18 +151,13 @@ export default function ReviewScreen() {
   );
 
   const card = cards[idx];
-  const deckEmpty = cards.length === 0;
+  const deckEmpty = deckInfo.total === 0;
 
   return (
     <Box className="flex-1 bg-background">
       <SafeAreaView style={styles.safe}>
         <View style={styles.headerRow}>
-          <Link href="/(self-study)" style={styles.back}>
-            <Ionicons name="chevron-back" size={22} color={Accents.primary} />
-            <UIText className="text-primary-text text-xl" style={Type.bodyBold}>
-              Back
-            </UIText>
-          </Link>
+          <BackButton fallback="/(self-study)" />
           <Heading accessibilityRole="header" className="flex-1 text-2xl" style={Type.heading}>
             Review
           </Heading>
@@ -178,24 +194,43 @@ export default function ReviewScreen() {
               <ButtonText style={Type.bodyBold}>Retry</ButtonText>
             </Button>
           </Box>
+        ) : (!card || idx >= cards.length) && againCount > 0 ? (
+          <Box className="flex-1 items-center justify-center gap-4 bg-background p-8">
+            <Heading accessibilityRole="header" className="text-center text-2xl" style={Type.heading}>
+              Round complete
+            </Heading>
+            <UIText className="text-muted-foreground text-center" style={Type.body}>
+              {againCount === 1 ? '1 card needs' : `${againCount} cards need`} another look today.
+            </UIText>
+            <Button variant="default" className="min-h-11 rounded-xl" onPress={load} accessibilityRole="button">
+              <ButtonText style={Type.bodyBold}>{`Review ${againCount} again`}</ButtonText>
+            </Button>
+            <Button variant="outline" className="min-h-11 rounded-xl" onPress={goBack} accessibilityRole="button">
+              <ButtonText style={Type.bodyBold}>Back to deck</ButtonText>
+            </Button>
+          </Box>
         ) : !card || idx >= cards.length ? (
           <Box className="flex-1 items-center justify-center gap-4 bg-background p-8">
-            <Text style={{ fontSize: 56 }}>🎉</Text>
+            <Text style={{ fontSize: 56 }} accessible={false}>
+              🎉
+            </Text>
             <Heading accessibilityRole="header" className="text-center text-2xl" style={Type.heading}>
               All caught up!
             </Heading>
             <UIText className="text-muted-foreground text-center" style={Type.body}>
               {deckEmpty
-                ? 'This deck has no cards yet.'
-                : 'Every card in this deck is reviewed — come back when they are due again.'}
+                ? 'This deck has no cards yet — add some from the deck screen.'
+                : deckInfo.nextDue
+                  ? `Nothing else is due today. Next card due ${deckInfo.nextDue}.`
+                  : 'Every card in this deck is reviewed — come back when they are due again.'}
             </UIText>
             <Button
               variant="default"
               className="min-h-11 rounded-xl"
-              onPress={() => router.replace('/(self-study)')}
+              onPress={goBack}
               accessibilityRole="button"
             >
-              <ButtonText style={Type.bodyBold}>Back to decks</ButtonText>
+              <ButtonText style={Type.bodyBold}>Back to deck</ButtonText>
             </Button>
           </Box>
         ) : (
@@ -231,7 +266,7 @@ export default function ReviewScreen() {
                 <Button
                   variant="destructive"
                   className="min-h-11 flex-1 rounded-2xl"
-                  onPress={() => handleGrade(0)}
+                  onPress={() => handleGrade('again')}
                   disabled={busy}
                   accessibilityRole="button"
                 >
@@ -240,7 +275,7 @@ export default function ReviewScreen() {
                 <Button
                   variant="default"
                   className="min-h-11 flex-1 rounded-2xl bg-warn"
-                  onPress={() => handleGrade(2)}
+                  onPress={() => handleGrade('hard')}
                   disabled={busy}
                   accessibilityRole="button"
                 >
@@ -249,7 +284,7 @@ export default function ReviewScreen() {
                 <Button
                   variant="default"
                   className="min-h-11 flex-1 rounded-2xl bg-success"
-                  onPress={() => handleGrade(3)}
+                  onPress={() => handleGrade('good')}
                   disabled={busy}
                   accessibilityRole="button"
                 >
@@ -258,7 +293,7 @@ export default function ReviewScreen() {
                 <Button
                   variant="default"
                   className="min-h-11 flex-1 rounded-2xl bg-teal"
-                  onPress={() => handleGrade(5)}
+                  onPress={() => handleGrade('easy')}
                   disabled={busy}
                   accessibilityRole="button"
                 >
@@ -276,7 +311,6 @@ export default function ReviewScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, padding: 16, gap: 12 },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  back: { paddingVertical: 4 },
   backArea: { marginTop: 4 },
   divider: { height: 1, marginVertical: 16 },
   gradeRow: { flexDirection: 'row', gap: 10 },

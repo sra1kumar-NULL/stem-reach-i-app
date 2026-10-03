@@ -1,19 +1,21 @@
-import { Ionicons } from '@expo/vector-icons';
-import { Link, useFocusEffect } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getPerformance } from '@/api/client';
+import { BackButton } from '@/components/back-button';
+import { ErrorState } from '@/components/error-state';
 import { Avatar, AvatarFallbackText } from '@/components/ui/avatar';
 import { Box } from '@/components/ui/box';
 import { Heading } from '@/components/ui/heading';
 import { Text as UIText } from '@/components/ui/text';
 import { Accents, Nord, onAccent, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { toFriendlyError } from '@/lib/friendly-error';
+import { addDays, localDateString } from '@/lib/sm2';
 import type { PerformanceReport } from '@stemreach/core';
 
-const BAR_MAX = 100;
 const AVATAR_COLORS = [Nord.nord15, Nord.nord7, Nord.nord12, Nord.nord10, Nord.nord13, Nord.nord11];
 
 type RangeKey = 'today' | '7d' | '30d';
@@ -23,14 +25,11 @@ const RANGES: { key: RangeKey; label: string }[] = [
   { key: '30d', label: '30 days' },
 ];
 
+/** Local-calendar range (toISOString was the UTC day — off by one near midnight in IST). */
 function rangeParams(key: RangeKey): { from?: string; to?: string } {
-  const now = new Date();
-  const to = now.toISOString().slice(0, 10);
+  const to = localDateString();
   if (key === 'today') return { from: to, to };
-  const days = key === '7d' ? 6 : 29;
-  const fromDate = new Date(now);
-  fromDate.setDate(now.getDate() - days);
-  return { from: fromDate.toISOString().slice(0, 10), to };
+  return { from: addDays(to, key === '7d' ? -6 : -29), to };
 }
 
 function accuracyColor(pct: number): string {
@@ -52,12 +51,14 @@ function AnimatedBar({ pct, color }: { pct: number; color: string }) {
   const width = useRef(new Animated.Value(0)).current;
   useFocusEffect(
     useCallback(() => {
-      Animated.spring(width, { toValue: Math.min(1, pct) * BAR_MAX, useNativeDriver: false, friction: 8, tension: 40 }).start();
+      Animated.spring(width, { toValue: Math.max(0, Math.min(1, pct)), useNativeDriver: false, friction: 8, tension: 40 }).start();
     }, [width, pct]),
   );
   return (
     <View style={styles.barTrack}>
-      <Animated.View style={[styles.barFill, { width, backgroundColor: color }]} />
+      <Animated.View
+        style={[styles.barFill, { width: width.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }), backgroundColor: color }]}
+      />
     </View>
   );
 }
@@ -77,7 +78,7 @@ export default function ReportsScreen() {
     const { from, to } = rangeParams(r);
     getPerformance(from, to)
       .then(setReport)
-      .catch((e) => setError(e instanceof Error ? e.message : 'failed'))
+      .catch((e) => setError(toFriendlyError(e, 'Could not load the performance report.')))
       .finally(() => {
         setLoading(false);
         setRefreshing(false);
@@ -95,12 +96,7 @@ export default function ReportsScreen() {
     <Box className="flex-1 bg-background">
       <SafeAreaView style={styles.safe}>
         <View style={styles.headerRow}>
-          <Link href="/(teacher)" style={styles.back}>
-            <Ionicons name="chevron-back" size={22} color={Accents.primary} />
-            <UIText className="text-primary-text text-xl" style={Type.bodyBold}>
-              Back
-            </UIText>
-          </Link>
+          <BackButton fallback="/(teacher)" />
           <Heading className="text-2xl" style={Type.heading}>
             Performance
           </Heading>
@@ -114,6 +110,9 @@ export default function ReportsScreen() {
                 key={key}
                 onPress={() => setRange(key)}
                 style={({ pressed }) => [styles.chip, active && styles.chipActive, pressed && { opacity: 0.7 }]}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={label}
               >
                 <Text style={[styles.chipLabel, { color: active ? onAccent(Accents.primary) : theme.primaryText }]}>{label}</Text>
               </Pressable>
@@ -124,11 +123,7 @@ export default function ReportsScreen() {
         {loading ? (
           <ActivityIndicator size="large" color={Accents.primary} style={{ marginTop: 40 }} />
         ) : error ? (
-          <Box className="items-center gap-3 p-6">
-            <UIText className="text-muted-foreground text-center" style={Type.body}>
-              {error}
-            </UIText>
-          </Box>
+          <ErrorState message={error} onRetry={() => load(range)} />
         ) : (
           <FlatList
             data={report?.per_section ?? []}
@@ -221,9 +216,10 @@ export default function ReportsScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, padding: 16, gap: 8 },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  back: { paddingVertical: 4 },
   chipRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
   chip: {
+    minHeight: 44,
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: Accents.border,
     borderRadius: 999,

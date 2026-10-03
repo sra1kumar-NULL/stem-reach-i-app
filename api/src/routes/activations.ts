@@ -5,11 +5,7 @@ import { dailySetSections, dailySets, questions, sections } from "@stemreach/cor
 import { requireRole } from "../lib/auth.js";
 import type { AppContext } from "../lib/http.js";
 import { badRequest } from "../lib/http.js";
-import { ActivateRequest, type ActivationResponse } from "@stemreach/core";
-
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+import { ActivateRequest, isValidIsoDate, todayInTz, type ActivationResponse } from "@stemreach/core";
 
 async function snapshot(ctx: AppContext, date: string): Promise<ActivationResponse> {
   const [set] = await ctx.db.select().from(dailySets).where(eq(dailySets.setDate, date)).limit(1);
@@ -52,37 +48,39 @@ export function routes(ctx: AppContext): Hono {
       throw e;
     }
 
-    const date = body.date ?? today();
+    const date = body.date ?? todayInTz(ctx.timezone);
+    if (!isValidIsoDate(date)) throw badRequest(`date ${date} is not a real calendar date`);
     const teacherId = c.var.user.id;
 
-    const existing = await ctx.db.select({ id: dailySets.id }).from(dailySets).where(eq(dailySets.setDate, date)).limit(1);
+    // Dedupe, then require every id to name a real section: an unknown id used
+    // to surface as a foreign-key 500 after the old sections were already wiped.
+    const sectionIds = [...new Set(body.section_ids)];
+    const known = await ctx.db.select({ id: sections.id }).from(sections).where(inArray(sections.id, sectionIds));
+    if (known.length !== sectionIds.length) {
+      const knownIds = new Set(known.map((k) => k.id));
+      const unknown = sectionIds.filter((id) => !knownIds.has(id));
+      throw badRequest(`unknown section id(s): ${unknown.join(", ")}`);
+    }
 
-    let setId: string;
-    if (existing.length > 0) {
-      setId = existing[0].id;
-      await ctx.db.update(dailySets).set({ activatedBy: teacherId }).where(eq(dailySets.id, setId));
-    } else {
-      const [row] = await ctx.db
+    // One transaction: the set's sections are replaced atomically, so a failure
+    // mid-way can no longer leave today's set with zero sections (empty feeds).
+    await ctx.db.transaction(async (tx) => {
+      const [row] = await tx
         .insert(dailySets)
         .values({ setDate: date, activatedBy: teacherId })
         .onConflictDoUpdate({ target: dailySets.setDate, set: { activatedBy: teacherId } })
         .returning({ id: dailySets.id });
-      setId = row.id;
-    }
-
-    await ctx.db.delete(dailySetSections).where(eq(dailySetSections.dailySetId, setId));
-    if (body.section_ids.length > 0) {
-      await ctx.db
-        .insert(dailySetSections)
-        .values(body.section_ids.map((sectionId) => ({ dailySetId: setId, sectionId })));
-    }
+      await tx.delete(dailySetSections).where(eq(dailySetSections.dailySetId, row.id));
+      await tx.insert(dailySetSections).values(sectionIds.map((sectionId) => ({ dailySetId: row.id, sectionId })));
+    });
 
     return c.json(await snapshot(ctx, date));
   });
 
   // GET /api/activations?date=YYYY-MM-DD — current snapshot for a date
   app.get("/", requireRole("teacher"), async (c) => {
-    const date = c.req.query("date") ?? today();
+    const date = c.req.query("date") ?? todayInTz(ctx.timezone);
+    if (!isValidIsoDate(date)) throw badRequest("date must be a real calendar date (YYYY-MM-DD)");
     return c.json(await snapshot(ctx, date));
   });
 

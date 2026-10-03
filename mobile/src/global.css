@@ -8,7 +8,9 @@
 @layer theme {
   :root {
     @variant light {
-      --primary: 94 129 172;
+      /* Frost nord10 darkened (same hue) so primary-foreground (nord6) labels
+         reach 4.82:1 — raw nord10 gave 3.50:1 in both themes. */
+      --primary: 76 106 145;
       --primary-foreground: 236 239 244;
       --card: 229 233 240;
       --secondary: 216 222 233;
@@ -37,7 +39,8 @@
     }
 
     @variant dark {
-      --primary: 94 129 172;
+      /* See light: nord6 on this primary = 4.82:1 (nord10 was 3.50:1). */
+      --primary: 76 106 145;
       --primary-foreground: 236 239 244;
       --card: 59 66 82;
       --secondary: 67 76 94;

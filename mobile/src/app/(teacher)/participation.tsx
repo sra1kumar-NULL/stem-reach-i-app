@@ -1,16 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Link, useFocusEffect } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getParticipation } from '@/api/client';
+import { BackButton } from '@/components/back-button';
+import { ErrorState } from '@/components/error-state';
 import { Avatar, AvatarFallbackText } from '@/components/ui/avatar';
 import { Box } from '@/components/ui/box';
 import { Heading } from '@/components/ui/heading';
 import { Text as UIText } from '@/components/ui/text';
 import { Accents, Nord, onAccent, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { toFriendlyError } from '@/lib/friendly-error';
 import type { ParticipationReport } from '@stemreach/core';
 
 const AVATAR_COLORS = [Nord.nord15, Nord.nord7, Nord.nord12, Nord.nord10, Nord.nord13, Nord.nord11];
@@ -33,7 +36,6 @@ interface Row {
 }
 
 export default function ParticipationScreen() {
-  const [date] = useState(() => new Date().toISOString().slice(0, 10));
   const theme = useTheme();
   const [report, setReport] = useState<ParticipationReport | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -45,15 +47,16 @@ export default function ParticipationScreen() {
       if (refreshing) setRefreshing(true);
       else setLoading(true);
       setError(null);
-      getParticipation(date)
+      // No date: the API resolves "today" in the school timezone.
+      getParticipation()
         .then(setReport)
-        .catch((e) => setError(e instanceof Error ? e.message : 'failed'))
+        .catch((e) => setError(toFriendlyError(e, 'Could not load participation.')))
         .finally(() => {
           setLoading(false);
           setRefreshing(false);
         });
     },
-    [date],
+    [],
   );
 
   useFocusEffect(useCallback(() => load(), [load]));
@@ -69,12 +72,7 @@ export default function ParticipationScreen() {
     <Box className="flex-1 bg-background">
       <SafeAreaView style={styles.safe}>
         <View style={styles.headerRow}>
-          <Link href="/(teacher)" style={styles.back}>
-            <Ionicons name="chevron-back" size={22} color={Accents.primary} />
-            <UIText className="text-primary-text text-xl" style={Type.bodyBold}>
-              Back
-            </UIText>
-          </Link>
+          <BackButton fallback="/(teacher)" />
           <Heading className="text-2xl" style={Type.heading}>
             Participation
           </Heading>
@@ -83,11 +81,7 @@ export default function ParticipationScreen() {
         {loading ? (
           <ActivityIndicator size="large" color={Accents.primary} style={{ marginTop: 40 }} />
         ) : error ? (
-          <Box className="items-center gap-3 p-6">
-            <UIText className="text-muted-foreground text-center" style={Type.body}>
-              {error}
-            </UIText>
-          </Box>
+          <ErrorState message={error} onRetry={() => load()} />
         ) : (
           <FlatList
             data={rows}
@@ -146,7 +140,6 @@ export default function ParticipationScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, padding: 16, gap: 8 },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  back: { paddingVertical: 4 },
   statsRow: { flexDirection: 'row', gap: 10, marginVertical: 12 },
   statValue: { fontSize: 22, fontWeight: '800' },
   avatar: {},

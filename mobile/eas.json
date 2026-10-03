@@ -15,7 +15,8 @@
       },
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://cihobqescuhuxtiogivb.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpaG9icWVzY3VodXh0aW9naXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU1OTc0NzAsImV4cCI6MjEwMTE3MzQ3MH0.Rdf9ROk49Nedy8Z3PDKN7B3fZh8xQkBPoQ5sQWeSedk"
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpaG9icWVzY3VodXh0aW9naXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU1OTc0NzAsImV4cCI6MjEwMTE3MzQ3MH0.Rdf9ROk49Nedy8Z3PDKN7B3fZh8xQkBPoQ5sQWeSedk",
+        "EXPO_PUBLIC_API_URL": "https://stemreach-api.onrender.com"
       }
     },
     "production": {
@@ -25,7 +26,8 @@
       },
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://cihobqescuhuxtiogivb.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpaG9icWVzY3VodXh0aW9naXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU1OTc0NzAsImV4cCI6MjEwMTE3MzQ3MH0.Rdf9ROk49Nedy8Z3PDKN7B3fZh8xQkBPoQ5sQWeSedk"
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpaG9icWVzY3VodXh0aW9naXZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU1OTc0NzAsImV4cCI6MjEwMTE3MzQ3MH0.Rdf9ROk49Nedy8Z3PDKN7B3fZh8xQkBPoQ5sQWeSedk",
+        "EXPO_PUBLIC_API_URL": "https://stemreach-api.onrender.com"
       }
     }
   },

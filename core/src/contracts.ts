@@ -213,6 +213,12 @@ export const SignupRequest = z.object({
   password: z.string().min(8, "password must be at least 8 characters"),
   role: ROLE,
   class_section: z.string().trim().min(1).max(20).optional(),
+  /**
+   * Required by the API when role === "teacher" (checked against the server's
+   * TEACHER_INVITE_CODE). Optional in the schema so the contract stays
+   * backward-compatible for installed student builds.
+   */
+  teacher_invite_code: z.string().min(1).max(128).optional(),
 });
 export type SignupRequest = z.infer<typeof SignupRequest>;
 

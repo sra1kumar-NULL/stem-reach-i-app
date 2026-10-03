@@ -1,7 +1,27 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { applyGrade, INITIAL_STATE, dueDateFor, isLearned, MAX_EASE, MIN_EASE } from "./srs.ts";
+import { applyGrade, clampEase, INITIAL_STATE, dueDateFor, isLearned, MAX_EASE, MIN_EASE } from "./srs.ts";
+
+test("repeated hard grows the interval instead of sticking at 1 day", () => {
+  let s = INITIAL_STATE;
+  const intervals: number[] = [];
+  for (let i = 0; i < 5; i++) {
+    s = applyGrade(s, "hard");
+    intervals.push(s.intervalDays);
+  }
+  assert.deepEqual(intervals, [1, 2, 3, 4, 5]);
+  const long = applyGrade({ ease: 2.5, intervalDays: 20, repetitions: 4 }, "hard");
+  assert.equal(long.intervalDays, 24);
+});
+
+test("non-finite state never leaks NaN", () => {
+  assert.equal(clampEase(Number.NaN), INITIAL_STATE.ease);
+  const s = applyGrade({ ease: Number.NaN, intervalDays: Number.NaN, repetitions: Number.NaN }, "good");
+  assert.ok(Number.isFinite(s.ease));
+  assert.ok(Number.isFinite(s.intervalDays));
+  assert.ok(Number.isFinite(s.repetitions));
+});
 
 test("again resets the run and shortens the interval", () => {
   const s = applyGrade(INITIAL_STATE, "again");

@@ -122,7 +122,8 @@ export function routes(ctx: AppContext): Hono {
   app.delete("/:id", requireRole("teacher"), async (c) => {
     let params: DeleteQuestionParams;
     try {
-      params = DeleteQuestionParams.parse(c.req.param("id"));
+      // The schema is an object ({ id }); parsing the bare string always failed (400 for every id).
+      params = DeleteQuestionParams.parse({ id: c.req.param("id") });
     } catch (e) {
       if (e instanceof ZodError) throw badRequest(zodMessage(e));
       throw e;

@@ -2,9 +2,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Easing, FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFeedToday, getMe, submitAnswer } from '@/api/client';
 import { ConfirmSheet } from '@/components/confirm-sheet';
+import { ErrorState } from '@/components/error-state';
 import { QuestionCard } from '@/components/question-card';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Box } from '@/components/ui/box';
@@ -14,10 +16,19 @@ import { Text as UIText } from '@/components/ui/text';
 import { Accents, Type } from '@/constants/theme';
 import { useConfirmSignOut } from '@/hooks/use-confirm-sign-out';
 import { useTheme } from '@/hooks/use-theme';
+import { toFriendlyError } from '@/lib/friendly-error';
 import type { FeedResponse, SelfEval } from '@stemreach/core';
 
 export default function FeedScreen() {
-  const { height } = useWindowDimensions();
+  const { height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  // Page height = the feed container's measured height, not the window's: the
+  // window includes status/nav bars, so fixed window-height pages were clipped.
+  const [pageHeight, setPageHeight] = useState(0);
+  const height = pageHeight > 0 ? pageHeight : windowHeight;
+  /** Header sits below the status bar / notch; pages reserve room for it. */
+  const headerTop = insets.top + 8;
+  const pageTopPad = headerTop + 64;
   const { confirmOut, signingOut, openConfirm, closeConfirm, confirmSignOut } = useConfirmSignOut();
   const theme = useTheme();
   const listRef = useRef<FlatList>(null);
@@ -37,7 +48,7 @@ export default function FeedScreen() {
         setFeed(f);
         setStreak(me.streak.current);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : 'failed to load feed'))
+      .catch((e) => setError(toFriendlyError(e, 'Could not load today\'s revision.')))
       .finally(() => setLoading(false));
   }, []);
 
@@ -88,20 +99,18 @@ export default function FeedScreen() {
     [feed],
   );
 
-  const completed = feed != null && (feed.progress.completed === true || done);
-
+  // Only the in-session finish routes to the summary. A feed that is already
+  // complete on load renders the "Done for today" state below instead —
+  // redirecting there made summary's "Back to home" (→ / → feed → summary)
+  // loop forever, and showed a fabricated "0/N · 0%" score on reopen.
   useEffect(() => {
-    if (!completed) return;
+    if (!done) return;
     router.replace({
       pathname: '/(student)/summary',
-      params: {
-        correct: String(stats.correct),
-        attempted: String(stats.attempted || feed?.progress.answered || 0),
-        streak: String(streak),
-      },
+      params: { correct: String(stats.correct), attempted: String(stats.attempted) },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [completed]);
+  }, [done]);
 
   if (loading) {
     return (
@@ -111,15 +120,82 @@ export default function FeedScreen() {
     );
   }
 
+  // Theme / offline self-study / sign out: shared by the empty and error states
+  // so a student is never stuck on a screen with only Retry.
+  const escapeHatches = (
+    <>
+      <View style={styles.emptyActions}>
+        <ThemeToggle />
+        <Pressable
+          onPress={() => router.push('/(self-study)')}
+          style={({ pressed }) => [styles.signoutPill, pressed && { opacity: 0.6 }]}
+          accessibilityRole="button"
+          accessibilityLabel="Self study"
+        >
+          <Ionicons name="library-outline" size={14} color={theme.textSecondary} />
+          <UIText className="text-muted-foreground font-semibold" style={Type.bodySemi}>
+            Study
+          </UIText>
+        </Pressable>
+        <Pressable
+          onPress={openConfirm}
+          style={({ pressed }) => [styles.signoutPill, pressed && { opacity: 0.6 }]}
+          accessibilityRole="button"
+          accessibilityLabel="Sign out"
+        >
+          <Ionicons name="log-out-outline" size={14} color={theme.textSecondary} />
+          <UIText className="text-muted-foreground font-semibold" style={Type.bodySemi}>
+            Sign out
+          </UIText>
+        </Pressable>
+      </View>
+      <ConfirmSheet
+        visible={confirmOut}
+        title="Sign out?"
+        message="You'll need to sign in again to continue."
+        confirmLabel="Sign out"
+        loading={signingOut}
+        onConfirm={confirmSignOut}
+        onCancel={closeConfirm}
+      />
+    </>
+  );
+
   if (error) {
     return (
+      <ErrorState fill message={error} onRetry={load}>
+        {escapeHatches}
+      </ErrorState>
+    );
+  }
+
+  if (feed?.progress.completed && !done) {
+    return (
       <Box className="flex-1 items-center justify-center p-8 gap-4 bg-background">
+        <Text style={{ fontSize: 56 }} accessible={false}>
+          🎊
+        </Text>
+        <Heading accessibilityRole="header" className="text-center text-2xl" style={Type.heading}>
+          Done for today!
+        </Heading>
         <UIText className="text-muted-foreground text-center" style={Type.body}>
-          {error}
+          You finished today&apos;s revision. Come back tomorrow for a fresh set, or review your own decks now.
         </UIText>
-        <Button variant="default" className="rounded-xl" onPress={load}>
-          <ButtonText style={Type.bodyBold}>Retry</ButtonText>
+        <UIText className="text-muted-foreground" style={Type.bodySemi}>
+          Current streak: {streak} 🔥
+        </UIText>
+        <Button
+          variant="default"
+          className="min-h-11 rounded-xl"
+          onPress={() => router.push('/(self-study)')}
+          accessibilityRole="button"
+        >
+          <ButtonText style={Type.bodyBold}>Review my decks</ButtonText>
         </Button>
+        <Button variant="outline" className="min-h-11 rounded-xl" onPress={load} accessibilityRole="button">
+          <ButtonText style={Type.bodyBold}>Refresh</ButtonText>
+        </Button>
+        {escapeHatches}
       </Box>
     );
   }
@@ -140,36 +216,14 @@ export default function FeedScreen() {
         <Button variant="default" className="rounded-xl" onPress={load}>
           <ButtonText style={Type.bodyBold}>Refresh</ButtonText>
         </Button>
-        <View style={styles.emptyActions}>
-          <ThemeToggle />
-          <Pressable
-            onPress={openConfirm}
-            style={({ pressed }) => [styles.signoutPill, pressed && { opacity: 0.6 }]}
-            accessibilityRole="button"
-            accessibilityLabel="Sign out"
-          >
-            <Ionicons name="log-out-outline" size={14} color={theme.textSecondary} />
-            <UIText className="text-muted-foreground font-semibold" style={Type.bodySemi}>
-              Sign out
-            </UIText>
-          </Pressable>
-        </View>
-        <ConfirmSheet
-          visible={confirmOut}
-          title="Sign out?"
-          message="You'll need to sign in again to continue."
-          confirmLabel="Sign out"
-          loading={signingOut}
-          onConfirm={confirmSignOut}
-          onCancel={closeConfirm}
-        />
+        {escapeHatches}
       </Box>
     );
   }
 
   return (
-    <Box className="flex-1 bg-background">
-      <View style={[styles.header, styles.headerNoPointer, { top: height > 700 ? 48 : 24 }]}>
+    <Box className="flex-1 bg-background" onLayout={(e) => setPageHeight(Math.round(e.nativeEvent.layout.height))}>
+      <View style={[styles.header, styles.headerNoPointer, { top: headerTop }]}>
         <Box className="flex-1 bg-card rounded-2xl px-3.5 py-2.5 gap-2">
           <View style={styles.progressRow}>
             <View style={styles.progressLabel}>
@@ -216,7 +270,7 @@ export default function FeedScreen() {
         data={feed.questions}
         keyExtractor={(q) => q.id}
         renderItem={({ item, index }) => (
-          <View style={{ height, paddingTop: height > 700 ? 64 : 40 }}>
+          <View style={{ height, paddingTop: pageTopPad, paddingBottom: insets.bottom }}>
             <QuestionCard
               question={item}
               sectionLabel={sectionLabel(item.section_id)}
@@ -264,14 +318,14 @@ const styles = StyleSheet.create({
   barTrack: { height: 8, borderRadius: 4, backgroundColor: Accents.track, overflow: 'hidden' },
   barFill: { height: 8, borderRadius: 4, backgroundColor: Accents.primary },
   signoutBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: Accents.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emptyActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  signoutPill: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: Accents.border, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 8 },
+  emptyActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: 10 },
+  signoutPill: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: Accents.border, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 8 },
 });

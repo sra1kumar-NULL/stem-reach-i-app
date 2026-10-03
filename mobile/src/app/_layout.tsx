@@ -1,6 +1,7 @@
 import { useFonts as useFredoka, Fredoka_500Medium, Fredoka_600SemiBold, Fredoka_700Bold } from '@expo-google-fonts/fredoka';
 import { useFonts as useNunito, Nunito_400Regular, Nunito_600SemiBold, Nunito_700Bold } from '@expo-google-fonts/nunito';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaListener } from 'react-native-safe-area-context';
 import { Uniwind } from 'uniwind';
@@ -54,6 +55,7 @@ function AppShell() {
   return (
     <GluestackUIProvider mode={preference}>
       <ThemeProvider value={resolvedTheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
         <ErrorBoundary>
           <AuthProvider>
             <ToastProvider>
