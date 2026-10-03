@@ -15,6 +15,9 @@ config.resolver.nodeModulesPaths = [
 ];
 config.resolver.disableHierarchicalLookup = true;
 
+// Expo-sqlite's web worker imports its .wasm — process it as a static asset (web only; inert on native).
+config.resolver.assetExts.push('wasm');
+
 module.exports = withUniwindConfig(config, {
   cssEntryFile: './src/global.css',
   dtsFile: './uniwind-types.d.ts',

@@ -1,24 +1,33 @@
 import React from 'react';
-import { Text, StyleSheet } from 'react-native';
-import { Accents, Nord } from '@/constants/theme';
+
+import { Text as UIText } from '@/components/ui/text';
+import { Type } from '@/constants/theme';
+
+type Part =
+  | { type: 'text'; text: string }
+  | { type: 'link'; label: string; targetId: string };
 
 interface Props {
   content: string;
+  /** Caller-owned navigation for `[[target|label]]` spans; without a handler the span is inert text (no dead tap targets). */
   onLinkPress?: (targetId: string) => void;
 }
 
+/** Renders Zettelkasten wiki text — parses `[[target|label]]` into text and link spans. */
 export function ZettelText({ content, onLinkPress }: Props) {
   const linkRegex = /\[\[(.*?)(?:\|(.*?))?\]\]/g;
-  const parts = [];
+  const parts: Part[] = [];
   let lastIndex = 0;
-  let match;
+  let match: RegExpExecArray | null;
 
   while ((match = linkRegex.exec(content)) !== null) {
     if (match.index > lastIndex) {
       parts.push({ type: 'text', text: content.substring(lastIndex, match.index) });
     }
-    const label = match[1];
-    const targetId = match[2] || match[1];
+    // Group 1 = target id, group 2 = optional display label after `|`.
+    // `[[target]]` has no group 2, so the label falls back to the target.
+    const targetId = match[1] ?? '';
+    const label = match[2] ?? match[1] ?? '';
     parts.push({ type: 'link', label, targetId });
     lastIndex = linkRegex.lastIndex;
   }
@@ -28,21 +37,22 @@ export function ZettelText({ content, onLinkPress }: Props) {
   }
 
   return (
-    <Text style={styles.baseText}>
+    <UIText className="text-base leading-6 text-foreground" style={Type.body}>
       {parts.map((part, idx) =>
         part.type === 'link' ? (
-          <Text key={idx} style={styles.zettelLink} onPress={() => onLinkPress?.(part.targetId)}>
+          <UIText
+            key={idx}
+            className="text-primary-text font-bold underline"
+            accessibilityRole={onLinkPress ? 'link' : 'text'}
+            accessibilityLabel={part.label}
+            onPress={onLinkPress ? () => onLinkPress(part.targetId) : undefined}
+          >
             🔗 {part.label}
-          </Text>
+          </UIText>
         ) : (
-          <Text key={idx}>{part.text}</Text>
-        )
+          <UIText key={idx}>{part.text}</UIText>
+        ),
       )}
-    </Text>
+    </UIText>
   );
 }
-
-const styles = StyleSheet.create({
-  baseText: { color: Nord.nord6, fontSize: 16, lineHeight: 24 },
-  zettelLink: { color: Accents.primary, fontWeight: '700', textDecorationLine: 'underline' },
-});

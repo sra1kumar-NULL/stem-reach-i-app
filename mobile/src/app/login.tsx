@@ -157,6 +157,17 @@ export default function LoginScreen() {
               </Text>
             </Pressable>
           </Box>
+
+          <Button
+            variant="outline"
+            size="lg"
+            className="min-h-11 rounded-xl mt-2"
+            onPress={() => router.push('/(self-study)')}
+            accessibilityRole="button"
+            accessibilityLabel="Study offline, no account needed"
+          >
+            <ButtonText style={{ fontFamily: Fonts.sans }}>Study offline (no account)</ButtonText>
+          </Button>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </LinearGradient>
