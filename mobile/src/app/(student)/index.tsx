@@ -407,13 +407,13 @@ export default function FeedScreen() {
           🎊
         </Text>
         <Heading accessibilityRole="header" className="text-center text-2xl" style={Type.heading}>
-          {"You’re done for today!"}
+          {"You're done for today!"}
         </Heading>
         <UIText className="text-muted-foreground text-center" style={Type.body}>
           You finished today&apos;s revision. Come back tomorrow for a fresh set, or review your own decks now.
         </UIText>
         <UIText className="text-muted-foreground" style={Type.bodySemi}>
-          {streak >= 1 ? `Current streak: ${streak} 🔥` : ‘0 day streak — come back tomorrow!’}
+          {streak >= 1 ? `Current streak: ${streak} 🔥` : '0 day streak — come back tomorrow!'}
         </UIText>
         <Button variant="default" className="min-h-11 rounded-xl" onPress={openStudy} accessibilityRole="button" accessibilityLabel="Review my decks">
           <ButtonText style={Type.bodyBold}>Review my decks</ButtonText>
