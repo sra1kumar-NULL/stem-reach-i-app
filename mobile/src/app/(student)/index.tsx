@@ -413,11 +413,12 @@ export default function FeedScreen() {
           You finished today&apos;s revision. Come back tomorrow for a fresh set, or review your own decks now.
         </UIText>
         <UIText className="text-muted-foreground" style={Type.bodySemi}>
-          {streak >= 1 ? `Current streak: ${streak} 🔥` : '0 day streak — come back tomorrow!'}
+          {streak >= 1 ? `Current streak: ${streak} 🔥` : ‘0 day streak — come back tomorrow!’}
         </UIText>
         <Button variant="default" className="min-h-11 rounded-xl" onPress={openStudy} accessibilityRole="button" accessibilityLabel="Review my decks">
           <ButtonText style={Type.bodyBold}>Review my decks</ButtonText>
         </Button>
+        {escapeHatches}
         {refreshLink}
       </Box>
     );
@@ -438,9 +439,7 @@ export default function FeedScreen() {
         <UIText className="text-muted-foreground" style={Type.bodySemi}>
           {streak >= 1 ? `Current streak: ${streak} 🔥` : '0 day streak — start your streak today!'}
         </UIText>
-        <Button variant="default" className="min-h-11 rounded-xl" onPress={openStudy} accessibilityRole="button" accessibilityLabel="Review my decks">
-          <ButtonText style={Type.bodyBold}>Review my decks</ButtonText>
-        </Button>
+        {escapeHatches}
         {refreshLink}
       </Box>
     );
