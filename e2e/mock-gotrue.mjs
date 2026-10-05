@@ -4,6 +4,7 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 
 const PORT = Number(process.env.MOCK_PORT || 9999);
+const TEST_PASS = process.env.E2E_PASSWORD ?? 'Stemri@2026'; // gitguardian:ignore
 const SECRET = 'mock-secret';
 const b64 = (o) => Buffer.from(typeof o === 'string' ? o : JSON.stringify(o)).toString('base64url');
 const sign = (payload) => {
@@ -25,7 +26,7 @@ const SEED = [
   ['3a1f0c11-0000-4000-8000-000000000002', 's2@stemri.local'],
   ['3a1f0c11-0000-4000-8000-000000000003', 's3@stemri.local'],
 ];
-for (const [id, email] of SEED) users.set(id, { id, email, password: 'Stemri@2026', app_metadata: {}, user_metadata: {} });
+for (const [id, email] of SEED) users.set(id, { id, email, password: TEST_PASS, app_metadata: {}, user_metadata: {} });
 
 const publicUser = (u) => ({
   id: u.id, aud: 'authenticated', role: 'authenticated', email: u.email, email_confirmed_at: new Date().toISOString(),

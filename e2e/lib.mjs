@@ -1,4 +1,5 @@
 import { chromium } from 'playwright-core';
+const TEST_PASS = process.env.E2E_PASSWORD ?? 'Stemri@2026'; // gitguardian:ignore
 export const BASE = 'http://localhost:8301';
 export const API = 'http://localhost:3100';
 export const GOTRUE = 'http://localhost:9999';
@@ -13,7 +14,7 @@ export async function newPage(viewport = { width: 420, height: 900 }) {
   p.on('response', (r) => { if (r.url().startsWith(API)) { const u = new URL(r.url()); p.reqs.push(`${r.request().method()} ${u.pathname}${u.search} -> ${r.status()}`); } });
   return p;
 }
-export async function login(p, email, password = 'Stemri@2026') {
+export async function login(p, email, password = TEST_PASS) {
   await p.goto(BASE + '/login', { waitUntil: 'networkidle', timeout: 120000 });
   await p.locator('input[placeholder="email"]:visible').fill(email);
   await p.locator('input[placeholder="password"]:visible').fill(password);
@@ -26,7 +27,7 @@ export function check(name, ok, detail = '') { if (ok) { pass++; console.log('  
 export const summary = () => { console.log(`\nRESULT: ${pass} passed, ${fail} failed${fail ? ' -> ' + failures.join('; ') : ''}`); return fail; };
 export async function dbq(sql) { const { execSync } = await import('node:child_process'); return execSync(`podman exec stem-pg psql -U postgres -d stem_e2e -Atc "${sql.replace(/"/g, '\\"')}"`).toString().trim(); }
 export async function mockPassword(email) { return (await (await fetch(`${GOTRUE}/__password?email=${encodeURIComponent(email)}`)).json()); }
-export async function tokenFor(email, password = 'Stemri@2026') {
+export async function tokenFor(email, password = TEST_PASS) {
   const r = await fetch(`${GOTRUE}/auth/v1/token?grant_type=password`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password }) });
   return (await r.json()).access_token;
 }
