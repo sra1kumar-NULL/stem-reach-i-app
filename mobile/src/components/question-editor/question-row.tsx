@@ -32,8 +32,6 @@ export function Badge({ label, tone }: { label: string; tone: Tone }) {
   );
 }
 
-const DIFF_TONE = { easy: 'success', medium: 'warn', hard: 'danger' } as const;
-
 interface Props {
   q: TeacherQuestionDto;
   onPress: (q: TeacherQuestionDto) => void;
@@ -70,11 +68,12 @@ function RowImpl({ q, onPress }: Props) {
         {q.question_text}
       </Text>
       <View style={styles.badges}>
-        <Badge label={q.type === 'mcq' ? 'MCQ' : 'Flashcard'} tone="primary" />
-        <Badge label={q.difficulty} tone={DIFF_TONE[q.difficulty]} />
+        {/* Colour is reserved for status (Draft / Published); the rest stay neutral. */}
+        <Badge label={q.type === 'mcq' ? 'MCQ' : 'Flashcard'} tone="muted" />
+        <Badge label={q.difficulty} tone="muted" />
         <Badge label={status === 'draft' ? 'Draft' : 'Published'} tone={status === 'draft' ? 'warn' : 'success'} />
         {archived ? <Badge label="Archived" tone="muted" /> : null}
-        {q.language === 'kn' ? <Badge label="Kannada" tone="purple" /> : null}
+        {q.language === 'kn' ? <Badge label="Kannada" tone="muted" /> : null}
         <Text style={[Type.body, styles.count, { color: theme.textSecondary }]}>{answered} answered</Text>
       </View>
     </Pressable>

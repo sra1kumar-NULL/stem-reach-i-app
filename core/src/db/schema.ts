@@ -104,6 +104,22 @@ export const dailySetSections = pgTable(
   (t) => [primaryKey({ columns: [t.dailySetId, t.sectionId] })],
 );
 
+export const dailySetCohorts = pgTable(
+  "daily_set_cohorts",
+  {
+    dailySetId: uuid("daily_set_id")
+      .notNull()
+      .references(() => dailySets.id, { onDelete: "cascade" }),
+    /** Matches profiles.class_section exactly (e.g. "10A"). Case-sensitive. */
+    classSection: text("class_section").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.dailySetId, t.classSection] }),
+    index("idx_daily_set_cohorts_set").on(t.dailySetId),
+  ],
+);
+export type DailySetCohort = typeof dailySetCohorts.$inferSelect;
+
 export const submissions = pgTable(
   "submissions",
   {
@@ -125,6 +141,9 @@ export const submissions = pgTable(
   (t) => [
     uniqueIndex("submissions_student_question_set_unique").on(t.studentId, t.questionId, t.dailySetId),
     index("idx_submissions_student_set").on(t.studentId, t.dailySetId),
+    // FK lookups and per-question / per-set aggregates (question list submission_count, in-use checks, reports, calendar).
+    index("idx_submissions_question").on(t.questionId),
+    index("idx_submissions_set").on(t.dailySetId),
   ],
 );
 
@@ -159,6 +178,7 @@ export const reviewStates = pgTable(
   (t) => [
     primaryKey({ columns: [t.studentId, t.questionId] }),
     index("idx_review_states_due").on(t.dueDate),
+    index("idx_review_states_question").on(t.questionId),
   ],
 );
 

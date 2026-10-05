@@ -1,11 +1,16 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
-import { getMe, markAuthInitialized, setAccessToken } from '@/api/client';
-import { toFriendlyError } from '@/lib/friendly-error';
+import { getMe, markAuthInitialized, registerAuthHooks, setAccessToken } from '@/api/client';
+import { Box } from '@/components/ui/box';
+import { Heading } from '@/components/ui/heading';
+import { Text } from '@/components/ui/text';
+import { configProblems, describeProblems, rawConfig } from '@/lib/config';
+import { MSG_SESSION_ENDED, toAuthError, toFriendlyError } from '@/lib/friendly-error';
 import { resetRedirectUrl } from '@/lib/auth-links';
+import { runSignOutCleanups } from '@/lib/session-cleanup';
 import type { MeResponse } from '@stemreach/core';
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -19,9 +24,11 @@ const SIGN_OUT_TIMEOUT_MS = 4000;
 export const initialUrlHash: string =
   Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.hash : '';
 
+// A production build with missing config shows <ConfigErrorScreen/> instead of the app; the client
+// is still created (with inert placeholders) so importing this module never throws.
 export const supabase: SupabaseClient = createClient(
-  process.env.EXPO_PUBLIC_SUPABASE_URL ?? '',
-  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '',
+  configProblems.length ? 'https://config-missing.invalid' : (rawConfig.supabaseUrl ?? ''),
+  configProblems.length ? 'config-missing' : (rawConfig.supabaseAnonKey ?? ''),
   {
     auth: {
       storage: AsyncStorage,
@@ -43,6 +50,13 @@ interface AuthState {
   loading: boolean;
   meStatus: MeStatus;
   signingOut: boolean;
+  /** True when only /change-password is allowed (token flag set by a teacher reset, or the API said so). */
+  mustChangePassword: boolean;
+  /** One-shot message for the login screen (e.g. "Your session ended."). */
+  notice: string | null;
+  clearNotice: () => void;
+  /** Call after the new password is saved: stops forcing /change-password. */
+  markPasswordChanged: () => void;
   retryMe: () => void;
   /** Replaces the cached /api/me (e.g. with the PATCH /api/me response) so every screen sees the change. */
   applyMe: (next: MeResponse) => void;
@@ -56,12 +70,39 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState | null>(null);
 
+/** Full-screen stop for a production build that shipped without its configuration. */
+function ConfigErrorScreen() {
+  return (
+    <Box className="flex-1 items-center justify-center bg-background px-8 gap-3" accessibilityRole="alert">
+      <Heading className="text-center text-2xl">App is not configured</Heading>
+      <Text className="text-center text-muted-foreground">
+        This build is missing settings it needs to reach the server. Please install the latest version or contact your school.
+      </Text>
+      <Box className="bg-card rounded-xl p-4 gap-1 self-stretch">
+        {describeProblems(configProblems).map((line) => (
+          <Text key={line} selectable className="text-sm text-foreground">
+            {line}
+          </Text>
+        ))}
+      </Box>
+    </Box>
+  );
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
+  if (configProblems.length) return <ConfigErrorScreen />;
+  return <AuthProviderInner>{children}</AuthProviderInner>;
+}
+
+function AuthProviderInner({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [me, setMe] = useState<MeResponse | null>(null);
   const [meStatus, setMeStatus] = useState<MeStatus>('idle');
   const [loading, setLoading] = useState(true);
   const [signingOut, setSigningOut] = useState(false);
+  const [forcedChange, setForcedChange] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const signOutRef = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
     supabase.auth
@@ -85,11 +126,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
       setSession(next);
       setAccessToken(next?.access_token ?? null);
-      if (!next) setMe(null);
+      if (!next) {
+        setMe(null);
+        setForcedChange(false);
+      }
     });
 
     return () => sub.subscription.unsubscribe();
   }, []);
+
+  // Lets `apiFetch` recover from an expired token (one refresh, then sign out) and route a
+  // "password change required" 403 to /change-password.
+  useEffect(
+    () =>
+      registerAuthHooks({
+        refreshSession: async () => {
+          const { data, error } = await supabase.auth.refreshSession();
+          return error ? null : (data.session?.access_token ?? null);
+        },
+        onSessionExpired: () => {
+          setNotice(MSG_SESSION_ENDED);
+          void signOutRef.current();
+        },
+        onPasswordChangeRequired: () => setForcedChange(true),
+      }),
+    [],
+  );
 
   const token = session?.access_token;
 
@@ -128,8 +190,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [loadMe]);
 
   const signIn = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw new Error(error.message);
+    let error;
+    try {
+      ({ error } = await supabase.auth.signInWithPassword({ email, password }));
+    } catch (e) {
+      // supabase-js can throw (not return) on transport failures.
+      throw new Error(toAuthError(e));
+    }
+    if (error) throw new Error(toAuthError(error));
+    setNotice(null);
   }, []);
 
   const requestPasswordReset = useCallback(async (email: string) => {
@@ -182,6 +251,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         // Best effort: the in-memory auth state below is cleared regardless.
       }
+      runSignOutCleanups();
       setSession(null);
       setMe(null);
       setAccessToken(null);
@@ -192,9 +262,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  signOutRef.current = signOut;
+
+  const clearNotice = useCallback(() => setNotice(null), []);
+  const markPasswordChanged = useCallback(() => setForcedChange(false), []);
+  const mustChangePassword = forcedChange || session?.user.app_metadata?.must_change_password === true;
+
   const value = useMemo(
-    () => ({ session, me, loading, meStatus, signingOut, retryMe, applyMe, signIn, requestPasswordReset, updatePassword, signOut }),
-    [session, me, loading, meStatus, signingOut, retryMe, applyMe, signIn, requestPasswordReset, updatePassword, signOut],
+    () => ({
+      session,
+      me,
+      loading,
+      meStatus,
+      signingOut,
+      mustChangePassword,
+      notice,
+      clearNotice,
+      markPasswordChanged,
+      retryMe,
+      applyMe,
+      signIn,
+      requestPasswordReset,
+      updatePassword,
+      signOut,
+    }),
+    [session, me, loading, meStatus, signingOut, mustChangePassword, notice, clearNotice, markPasswordChanged, retryMe, applyMe, signIn, requestPasswordReset, updatePassword, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

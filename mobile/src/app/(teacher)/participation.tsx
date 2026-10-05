@@ -1,31 +1,25 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { getParticipation } from '@/api/client';
+import { ApiError, getActivations } from '@/api/client';
+import { getParticipation } from '@/api/reports';
 import { BackButton } from '@/components/back-button';
 import { ErrorState } from '@/components/error-state';
 import { Avatar, AvatarFallbackText } from '@/components/ui/avatar';
 import { Box } from '@/components/ui/box';
 import { Heading } from '@/components/ui/heading';
 import { Text as UIText } from '@/components/ui/text';
-import { Accents, Nord, onAccent, Type } from '@/constants/theme';
+import { Accents, onAccent, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { toFriendlyError } from '@/lib/friendly-error';
 import type { ParticipationReport } from '@stemreach/core';
 import { initials } from '@/lib/profile';
-
-const AVATAR_COLORS = [Nord.nord15, Nord.nord7, Nord.nord12, Nord.nord10, Nord.nord13, Nord.nord11];
-
-interface Row {
-  id: string;
-  name: string;
-  done: boolean;
-  completed: boolean;
-  answered: number;
-}
+import { formatLongDate } from '@/lib/calendar';
+import { AVATAR_FG, avatarColor, participationRows, revisedLabel } from '@/lib/reports';
+import { Button, ButtonText } from '@/components/ui/button';
 
 export default function ParticipationScreen() {
   const theme = useTheme();
@@ -33,30 +27,46 @@ export default function ParticipationScreen() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  /** The API answered `no_activation`: nothing was activated for the day (an empty state, not an error). */
+  const [noActivation, setNoActivation] = useState(false);
+  /** Live questions activated today, for "Revised 8/15" (null when unknown). */
+  const [dayTotal, setDayTotal] = useState<number | null>(null);
+  const router = useRouter();
+  // Optional `?date=YYYY-MM-DD` (from the Calendar day panel); absent = the school's today.
+  const params = useLocalSearchParams<{ date?: string }>();
+  const date = typeof params.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(params.date) ? params.date : undefined;
 
   const load = useCallback(
     (refreshing = false) => {
       if (refreshing) setRefreshing(true);
       else setLoading(true);
       setError(null);
+      setNoActivation(false);
       // No date: the API resolves "today" in the school timezone.
-      getParticipation()
-        .then(setReport)
-        .catch((e) => setError(toFriendlyError(e, 'Could not load participation.')))
+      Promise.all([getParticipation(date), getActivations(date).catch(() => null)])
+        .then(([rep, act]) => {
+          setReport(rep);
+          setDayTotal(act ? act.sections.reduce((n, x) => n + x.question_count, 0) : null);
+        })
+        .catch((e) => {
+          if (e instanceof ApiError && e.status === 400 && e.code === 'no_activation') {
+            setReport(null);
+            setNoActivation(true);
+          } else {
+            setError(toFriendlyError(e, 'Could not load participation.'));
+          }
+        })
         .finally(() => {
           setLoading(false);
           setRefreshing(false);
         });
     },
-    [],
+    [date],
   );
 
   useFocusEffect(useCallback(() => load(), [load]));
 
-  const rows: Row[] = [
-    ...(report?.done ?? []).map((s) => ({ id: s.id, name: s.name, done: true, completed: s.completed, answered: s.answered })),
-    ...(report?.pending ?? []).map((s) => ({ id: s.id, name: s.name, done: false, completed: false, answered: 0 })),
-  ];
+  const rows = report ? participationRows(report) : [];
 
   const completedCount = report?.done.filter((s) => s.completed).length ?? 0;
 
@@ -65,42 +75,63 @@ export default function ParticipationScreen() {
       <SafeAreaView style={styles.safe}>
         <View style={styles.headerRow}>
           <BackButton fallback="/(teacher)" />
-          <Heading className="text-2xl" style={Type.heading}>
+          <Heading className="text-2xl" style={Type.heading} accessibilityRole="header">
             Participation
           </Heading>
         </View>
+        {date ? (
+          <UIText className="text-sm text-muted-foreground" style={Type.body}>
+            {formatLongDate(date)}
+          </UIText>
+        ) : null}
 
         {loading ? (
           <ActivityIndicator size="large" color={Accents.primary} style={{ marginTop: 40 }} />
         ) : error ? (
           <ErrorState message={error} onRetry={() => load()} />
+        ) : noActivation ? (
+          <Box className="items-center gap-3 rounded-2xl bg-card p-6">
+            <Ionicons name="calendar-clear-outline" size={28} color={theme.textSecondary} />
+            <UIText className="text-center text-foreground" style={Type.bodyBold}>
+              Nothing was activated for this day. Activate topics from Today.
+            </UIText>
+            <Button variant="default" className="min-h-11 rounded-xl" onPress={() => router.push('/(teacher)' as Href)} accessibilityRole="link">
+              <ButtonText style={Type.bodyBold}>Go to Today</ButtonText>
+            </Button>
+          </Box>
         ) : (
           <FlatList
             data={rows}
             keyExtractor={(r) => r.id}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Accents.primary} />}
-            renderItem={({ item, index }) => {
-              const avatarColor = AVATAR_COLORS[index % AVATAR_COLORS.length];
-              const chipBg = !item.done ? Nord.nord2 : item.completed ? Accents.success : Accents.warn;
-              const chipFg = onAccent(chipBg);
+            renderItem={({ item }) => {
+              // Pending = outlined chip in secondary text colour (>= 4.5:1 on the card in both themes).
+              const chipBg = !item.done ? 'transparent' : item.completed ? Accents.success : Accents.warn;
+              const chipFg = !item.done ? theme.textSecondary : onAccent(chipBg);
+              const statusLabel = !item.done ? 'pending' : item.completed ? 'done' : 'in progress';
+              const revisedText = revisedLabel(item, dayTotal);
               return (
-                <Box className={`bg-card flex-row items-center gap-3 rounded-2xl p-3 ${!item.done ? 'opacity-70' : ''}`}>
-                  <Avatar className="rounded-full" style={[styles.avatar, { backgroundColor: avatarColor }]}>
-                    <AvatarFallbackText className="font-extrabold" style={[styles.avatarText, { color: onAccent(avatarColor) }]}>
+                <Box
+                  className="bg-card flex-row items-center gap-3 rounded-2xl p-3"
+                  accessible
+                  accessibilityLabel={`${item.name}, ${statusLabel}, ${revisedText}`}
+                >
+                  <Avatar accessible={false} className="rounded-full" style={[styles.avatar, { backgroundColor: avatarColor(item.id) }]}>
+                    <AvatarFallbackText className="font-extrabold" style={[styles.avatarText, { color: AVATAR_FG }]}>
                       {initials(item.name)}
                     </AvatarFallbackText>
                   </Avatar>
-                  <Box className="flex-1 gap-0.5">
+                  <Box accessible={false} className="flex-1 gap-0.5">
                     <UIText className="text-foreground" style={Type.bodySemi}>
                       {item.name}
                     </UIText>
                     <UIText className="text-xs text-muted-foreground" style={Type.body}>
-                      {item.done ? `${item.answered} answers` : 'not started yet'}
+                      {revisedText}
                     </UIText>
                   </Box>
-                  <View style={[styles.statusChip, { backgroundColor: chipBg }]}>
-                    <Ionicons name={!item.done ? 'time-outline' : item.completed ? 'checkmark-circle' : 'play-circle'} size={12} color={chipFg} />
-                    <Text style={[styles.statusText, { color: chipFg }]}>{!item.done ? 'pending' : item.completed ? 'done' : 'in progress'}</Text>
+                  <View accessible={false} style={[styles.statusChip, { backgroundColor: chipBg }, !item.done && { borderWidth: 1, borderColor: theme.textSecondary }]}>
+                    <Ionicons name={!item.done ? 'time-outline' : item.completed ? 'checkmark-circle' : 'play-circle'} size={14} color={chipFg} />
+                    <Text style={[styles.statusText, { color: chipFg }]}>{statusLabel}</Text>
                   </View>
                 </Box>
               );
@@ -137,5 +168,5 @@ const styles = StyleSheet.create({
   avatar: {},
   avatarText: { fontSize: 15 },
   statusChip: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
-  statusText: { fontWeight: '800', fontSize: 12 },
+  statusText: { fontWeight: '800', fontSize: 13 },
 });

@@ -21,7 +21,8 @@ export function routes(ctx: AppContext): Hono {
         sectionName: sections.name,
         sectionSortOrder: sections.sortOrder,
         questionCount: count(questions.id),
-        enabledCount: count(sql`case when ${questions.enabled} then 1 end`),
+        // Questions students can actually receive: enabled AND published (drafts and archived excluded).
+        enabledCount: count(sql`case when ${questions.enabled} and ${questions.status} = 'published' then 1 end`),
       })
       .from(chapters)
       .leftJoin(sections, eq(sections.chapterId, chapters.id))
@@ -31,7 +32,8 @@ export function routes(ctx: AppContext): Hono {
 
     const byChapter = new Map<string, SyllabusResponse["chapters"][number]>();
     for (const r of rows) {
-      if (!r.sectionId || !r.sectionNo || !r.sectionName) continue;
+      // Chapters with no topics yet are listed too (sections: []): a teacher who just created one
+      // needs to see it to add its first topic or delete it.
       const chapter = byChapter.get(r.chapterId) ?? {
         id: r.chapterId,
         ncert_no: r.ncertNo,
@@ -39,6 +41,8 @@ export function routes(ctx: AppContext): Hono {
         subject: r.subject,
         sections: [],
       };
+      byChapter.set(r.chapterId, chapter);
+      if (!r.sectionId || !r.sectionNo || !r.sectionName) continue;
       chapter.sections.push({
         id: r.sectionId,
         section_no: r.sectionNo,
@@ -47,7 +51,6 @@ export function routes(ctx: AppContext): Hono {
         enabled_question_count: Number(r.enabledCount ?? 0),
         sort_order: r.sectionSortOrder ?? undefined,
       });
-      byChapter.set(r.chapterId, chapter);
     }
 
     const body: SyllabusResponse = { chapters: [...byChapter.values()] };

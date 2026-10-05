@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { Accents } from '@/constants/theme';
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
 
 const COLORS = [Accents.success, Accents.warn, Accents.primary, Accents.purple, Accents.teal, Accents.pink];
 const PIECES = 14;
@@ -17,9 +18,10 @@ interface Piece {
 export function Confetti({ fire }: { fire: boolean }) {
   const { width, height } = useWindowDimensions();
   const progress = useRef(new Animated.Value(0)).current;
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
-    if (!fire) return;
+    if (!fire || reducedMotion) return;
     progress.setValue(0);
     Animated.timing(progress, {
       toValue: 1,
@@ -27,9 +29,10 @@ export function Confetti({ fire }: { fire: boolean }) {
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
-  }, [fire, progress]);
+  }, [fire, progress, reducedMotion]);
 
-  if (!fire) return null;
+  // Reduced motion: no particles at all (the caller's own success UI still shows).
+  if (!fire || reducedMotion) return null;
 
   const pieces: Piece[] = [
     { x: -0.35, color: COLORS[0], rot: 30, size: 9 },

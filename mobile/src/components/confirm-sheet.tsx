@@ -14,14 +14,14 @@
  */
 import { type JSX, useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, Modal, Pressable, StyleSheet, View } from 'react-native';
-import { useReducedMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Box } from '@/components/ui/box';
 import { Button, ButtonText } from '@/components/ui/button';
 import { Heading } from '@/components/ui/heading';
 import { Text as UIText } from '@/components/ui/text';
-import { Accents, Nord, onAccent, Type } from '@/constants/theme';
+import { Nord, Type } from '@/constants/theme';
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
 
 export interface ConfirmSheetProps {
   /** Toggles the sheet; returning it to `false` re-arms the confirm button. */
@@ -31,6 +31,12 @@ export interface ConfirmSheetProps {
   /** Shown and spoken verbatim — e.g. "Sign out". Default: "Confirm". */
   confirmLabel?: string;
   cancelLabel?: string;
+  /**
+   * Irreversible action (delete, remove, reset...): the confirm button is a solid
+   * red `destructive` button (white label, 6.2:1). Default false - sign-out etc.
+   * stay neutral.
+   */
+  destructive?: boolean;
   /** True while the caller's confirmed action is running. */
   loading?: boolean;
   /** Called once per tap, after the confirm button locks. */
@@ -40,6 +46,9 @@ export interface ConfirmSheetProps {
 }
 
 /** Nord Polar Night scrim (nord0 @ 60%) — reads the same in light and dark. */
+/** Cap on large screens (matches Profile). */
+const MAX_SHEET_WIDTH = 560;
+
 const SCRIM = `${Nord.nord0}99`;
 
 export function ConfirmSheet({
@@ -48,6 +57,7 @@ export function ConfirmSheet({
   message,
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
+  destructive = false,
   loading = false,
   onConfirm,
   onCancel,
@@ -115,7 +125,10 @@ export function ConfirmSheet({
           accessibilityLabel="Close"
         />
 
-        <Box className="rounded-t-3xl bg-card px-6 pt-3" style={{ paddingBottom: insets.bottom + 24 }}>
+        <Box
+          className="w-full self-center rounded-t-3xl bg-card px-6 pt-3"
+          style={{ paddingBottom: insets.bottom + 24, maxWidth: MAX_SHEET_WIDTH }}
+        >
           <Box className="self-center bg-border" style={styles.grabber} />
 
           <Heading accessibilityRole="header" style={[Type.heading, styles.title]}>
@@ -141,7 +154,7 @@ export function ConfirmSheet({
             </Button>
 
             <Button
-              variant="default"
+              variant={destructive ? 'destructive' : 'default'}
               className={`min-h-11 flex-1 rounded-2xl ${busy ? 'opacity-50' : ''}`}
               disabled={busy}
               onPress={handleConfirm}
@@ -149,7 +162,7 @@ export function ConfirmSheet({
               accessibilityLabel={confirmLabel}
               accessibilityState={{ disabled: busy, busy }}
             >
-              {busy ? <ActivityIndicator color={onAccent(Accents.primary)} /> : null}
+              {busy ? <ActivityIndicator color={Nord.nord6} /> : null}
               <ButtonText style={Type.bodyBold}>{confirmLabel}</ButtonText>
             </Button>
           </View>

@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Db } from "@stemreach/core/db/client";
 import type { ApiError } from "@stemreach/core";
+import { isPgDataException } from "./pg-state.js";
 
 export interface AppContext {
   db: Db;
@@ -49,6 +50,11 @@ export function errorHandler(logger: Console) {
     if (err instanceof HttpError) {
       const body: ApiError = { error: { code: err.code, message: err.message } };
       return c.json(body, err.status as 400);
+    }
+    // A value Postgres cannot store (impossible date, NUL byte, bad UUID...) is the client's mistake, not a crash.
+    if (isPgDataException(err)) {
+      const body: ApiError = { error: { code: "bad_request", message: "one of the submitted values is not valid" } };
+      return c.json(body, 400);
     }
     logger.error(err);
     const body: ApiError = { error: { code: "internal", message: "something went wrong" } };

@@ -1,19 +1,18 @@
 import { Hono } from "hono";
-import { and, eq, inArray, lte, sql } from "drizzle-orm";
-import { ZodError } from "zod";
-import { dailySetSections, dailySets, questions, reviewStates, sections, streaks, submissions } from "@stemreach/core/db/schema";
+import { and, eq, lte, sql } from "drizzle-orm";
+import { dailySetCohorts, dailySetSections, dailySets, questions, reviewStates, streaks, submissions } from "@stemreach/core/db/schema";
 import { requireRole } from "../lib/auth.js";
 import type { AppContext } from "../lib/http.js";
 import { badRequest, conflict, notFound } from "../lib/http.js";
+import { buildDailyQueue } from "../lib/progress.js";
+import { parseBody } from "../lib/validate.js";
 import {
-  DAILY_PER_SECTION,
   SubmissionRequest,
   addDaysIso,
   todayInTz,
   applyGrade,
   dueDateFor,
   selfEvalIsCorrect,
-  type ProgressDto,
   type SelfEval,
   type SrsGrade,
   type SubmissionResponse,
@@ -37,38 +36,6 @@ const SRS_GRADE_BY_SELF_EVAL: Partial<Record<SelfEval, SrsGrade>> = {
   got_it: "good",
   hard: "hard",
 };
-
-async function readBody(c: { req: { json: () => Promise<unknown> } }): Promise<SubmissionRequest> {
-  try {
-    return SubmissionRequest.parse(await c.req.json());
-  } catch (e) {
-    if (e instanceof ZodError) throw badRequest(e.issues.map((i) => i.message).join("; "));
-    throw e;
-  }
-}
-
-/** Progress for a student within a daily set (same math as the feed). */
-async function progressFor(
-  ctx: AppContext,
-  studentId: string,
-  set: { id: string },
-  sectionIds: string[],
-): Promise<ProgressDto> {
-  const target = await ctx.db
-    .select({ sectionId: questions.sectionId, count: sql<number>`count(*)::int` })
-    .from(questions)
-    .where(and(eq(questions.enabled, true), eq(questions.status, "published"), inArray(questions.sectionId, sectionIds)))
-    .groupBy(questions.sectionId);
-
-  const total = [...target.values()].reduce((sum, t) => sum + Math.min(t.count, DAILY_PER_SECTION), 0);
-  const [answered] = await ctx.db
-    .select({ n: sql<number>`count(distinct ${submissions.questionId})::int` })
-    .from(submissions)
-    .innerJoin(questions, eq(questions.id, submissions.questionId))
-    .where(and(eq(submissions.studentId, studentId), eq(submissions.dailySetId, set.id), inArray(questions.sectionId, sectionIds)));
-
-  return { answered: answered?.n ?? 0, total, completed: (answered?.n ?? 0) >= total };
-}
 
 /**
  * Updates the student's streak for today. Called only on NEW submissions so
@@ -173,7 +140,7 @@ export function routes(ctx: AppContext): Hono {
 
   // POST /api/submissions — grade + log answer (idempotent per student+question+set)
   app.post("/", requireRole("student"), async (c) => {
-    const body = await readBody(c);
+    const body = await parseBody(c, SubmissionRequest);
     const studentId = c.var.user.id;
     const today = todayInTz(ctx.timezone);
 
@@ -196,6 +163,18 @@ export function routes(ctx: AppContext): Hono {
     // Idempotency: an already-recorded answer replays its stored result (even
     // across midnight or a later disable) — the checks below gate NEW answers only.
     const existing = await findSubmission(ctx.db, studentId, question.id, set.id);
+
+    const cohorts = await ctx.db
+      .select({ classSection: dailySetCohorts.classSection })
+      .from(dailySetCohorts)
+      .where(eq(dailySetCohorts.dailySetId, set.id));
+
+    if (cohorts.length > 0 && !existing) {
+      const studentSection = c.var.user.profile.classSection ?? null;
+      if (!studentSection || !cohorts.some((ch) => ch.classSection === studentSection)) {
+        throw badRequest("question is not part of your daily set");
+      }
+    }
 
     let isCorrect: boolean;
     if (existing) {
@@ -253,7 +232,14 @@ export function routes(ctx: AppContext): Hono {
       }
     }
 
-    const progress = await progressFor(ctx, studentId, set, sectionIds);
+    // Same builder as the feed (language-aware, same completed rule).
+    const { progress } = await buildDailyQueue(ctx.db, {
+      studentId,
+      setId: set.id,
+      sectionIds,
+      today,
+      pref: c.var.user.profile.questionLanguage,
+    });
     const res: SubmissionResponse = {
       is_correct: isCorrect,
       correct_option: question.correctOption,

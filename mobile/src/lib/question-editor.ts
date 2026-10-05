@@ -303,3 +303,19 @@ export function formatWhen(iso: string): string {
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
+
+/**
+ * Wording for a topic's/chapter's question counts. `total` is every question; `live` is what students
+ * can receive (enabled AND published). The difference is drafts and archived questions.
+ */
+export function formatQuestionCounts(total: number, live: number): string {
+  if (total <= 0) return 'No questions yet';
+  const liveN = Math.max(0, Math.min(live, total));
+  const hidden = total - liveN;
+  return `${liveN} live${hidden > 0 ? ` (${hidden} hidden)` : ''}`;
+}
+
+/** Helper under a disabled Delete button. */
+export function deleteBlockedHint(questionCount: number): string {
+  return `Move or delete its ${questionCount} ${questionCount === 1 ? 'question' : 'questions'} first`;
+}

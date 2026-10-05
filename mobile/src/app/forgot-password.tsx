@@ -2,13 +2,11 @@ import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator } from 'react-native';
 
-import { AuthShell } from '@/components/auth-shell';
+import { AuthField, AuthShell } from '@/components/auth-shell';
 import { Box } from '@/components/ui/box';
 import { Button, ButtonText } from '@/components/ui/button';
-import { Input, InputField } from '@/components/ui/input';
 import { Text } from '@/components/ui/text';
 import { Fonts, Nord } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
 import { cooldownRemaining, isValidEmail } from '@/lib/auth-links';
 import { EMAIL_RESET_ENABLED } from '@/lib/features';
 import { useAuth } from '@/state/auth';
@@ -37,7 +35,7 @@ export default function ForgotPasswordScreen() {
       }
       icon="help-buoy"
     >
-      <Box className="gap-2" accessibilityRole="summary">
+      <Box className="gap-2">
         <Text className="text-foreground font-bold" style={{ fontFamily: Fonts.sans }}>
           Students
         </Text>
@@ -71,7 +69,6 @@ export default function ForgotPasswordScreen() {
 /** Email-a-link form (only rendered when email reset is switched on). The success copy is identical for known and unknown addresses. */
 function EmailResetForm() {
   const { requestPasswordReset } = useAuth();
-  const theme = useTheme();
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
@@ -112,24 +109,17 @@ function EmailResetForm() {
       <Text className="text-foreground font-bold" style={{ fontFamily: Fonts.sans }}>
         Or reset by email
       </Text>
-      <Input className="border border-border rounded-xl bg-background">
-        <InputField
-          value={email}
-          onChangeText={setEmail}
-          placeholder="email"
-          accessibilityLabel="Email"
-          autoComplete="email"
-          textContentType="emailAddress"
-          placeholderTextColor={theme.textSecondary}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="email-address"
-          returnKeyType="send"
-          onSubmitEditing={() => void submit()}
-          className="px-4 py-3 text-base"
-          style={{ color: theme.text, fontFamily: Fonts.sans }}
-        />
-      </Input>
+      <AuthField
+        label="Email"
+        value={email}
+        onChangeText={setEmail}
+        placeholder="email"
+        autoComplete="email"
+        textContentType="emailAddress"
+        keyboardType="email-address"
+        returnKeyType="send"
+        onSubmitEditing={() => void submit()}
+      />
 
       {error && (
         <Text accessibilityRole="alert" className="text-center text-danger-text text-sm" style={{ fontFamily: Fonts.sans }}>

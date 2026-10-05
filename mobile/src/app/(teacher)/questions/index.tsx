@@ -1,19 +1,22 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getSyllabus } from '@/api/client';
 import { listQuestions, questionsVersion, type QuestionFilters } from '@/api/questions';
 import { ErrorState } from '@/components/error-state';
 import { ChipRow } from '@/components/question-editor/chip';
+import { MenuItem, PopoverMenu } from '@/components/question-editor/popover-menu';
 import { QuestionRow } from '@/components/question-editor/question-row';
 import { SectionButton, SectionPicker } from '@/components/question-editor/section-picker';
+import { Button, ButtonText } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Accents, onAccent, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { toFriendlyError } from '@/lib/friendly-error';
+import { syllabusStore } from '@/lib/syllabus-store';
 import type { SyllabusResponse, TeacherQuestionDto } from '@stemreach/core';
 
 type Pick1<K extends keyof QuestionFilters> = NonNullable<QuestionFilters[K]> | 'all';
@@ -40,9 +43,9 @@ const STATUS_OPTS: { value: Pick1<'status'>; label: string }[] = [
   { value: 'published', label: 'Published' },
 ];
 const ARCHIVED_OPTS: { value: NonNullable<QuestionFilters['archived']>; label: string; a11y: string }[] = [
-  { value: 'exclude', label: 'Hide', a11y: 'Hide archived' },
-  { value: 'include', label: 'Show', a11y: 'Show archived too' },
-  { value: 'only', label: 'Only', a11y: 'Only archived' },
+  { value: 'exclude', label: 'Active', a11y: 'Active questions only' },
+  { value: 'only', label: 'Archived', a11y: 'Archived questions only' },
+  { value: 'include', label: 'Both', a11y: 'Active and archived questions' },
 ];
 
 interface Filters {
@@ -74,11 +77,13 @@ function activeFilterCount(f: Filters): number {
 
 export default function QuestionsListScreen() {
   const theme = useTheme();
+  const narrow = useWindowDimensions().width < 380;
   const [syllabus, setSyllabus] = useState<SyllabusResponse | null>(null);
   const [syllabusError, setSyllabusError] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [showFilters, setShowFilters] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
 
@@ -96,7 +101,8 @@ export default function QuestionsListScreen() {
 
   const loadSyllabus = useCallback(() => {
     setSyllabusError(false);
-    getSyllabus()
+    syllabusStore
+      .get(getSyllabus)
       .then(setSyllabus)
       .catch(() => setSyllabusError(true));
   }, []);
@@ -177,6 +183,8 @@ export default function QuestionsListScreen() {
   const set = <K extends keyof Filters>(k: K, v: Filters[K]) => setFilters((f) => ({ ...f, [k]: v }));
   const nFilters = activeFilterCount(filters);
   const anyFilter = nFilters > 0 || !!filters.section_id || !!search.trim();
+  /** Resets only the chip filters (topic and search have their own clear controls). */
+  const clearFilters = () => setFilters((f) => ({ ...DEFAULT_FILTERS, section_id: f.section_id }));
   const clearAll = () => {
     setFilters(DEFAULT_FILTERS);
     setSearchInput('');
@@ -190,20 +198,25 @@ export default function QuestionsListScreen() {
           <Text accessibilityRole="header" style={[Type.heading, styles.title, { color: theme.text }]}>
             Questions
           </Text>
-          <Pressable
+          <Button
+            variant="outline"
+            size="sm"
             onPress={newQuestion}
-            accessibilityRole="button"
             accessibilityLabel="New question"
-            style={({ pressed }) => [styles.primaryBtn, { backgroundColor: Accents.primary }, pressed && { opacity: 0.8 }]}
           >
-            <Ionicons name="add" size={20} color={onAccent(Accents.primary)} />
-            <Text style={[Type.bodyBold, { color: onAccent(Accents.primary), fontSize: 15 }]}>New question</Text>
+            <Ionicons name="add" size={18} color={Accents.primary} />
+            <ButtonText style={[Type.bodyBold, { fontSize: 15 }]}>{narrow ? 'New' : 'New question'}</ButtonText>
+          </Button>
+          <Pressable
+            onPress={() => setMenuOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel="More"
+            accessibilityHint="Chapters and topics, import and export"
+            accessibilityState={{ expanded: menuOpen }}
+            style={({ pressed }) => [styles.menuBtn, pressed && { opacity: 0.6 }]}
+          >
+            <Ionicons name="ellipsis-horizontal" size={24} color={theme.text} />
           </Pressable>
-        </View>
-
-        <View style={styles.linkRow}>
-          <LinkBtn icon="library-outline" label="Manage topics" onPress={() => router.push('/(teacher)/catalog' as Href)} />
-          <LinkBtn icon="swap-vertical-outline" label="Import / export" onPress={() => router.push('/(teacher)/import' as Href)} />
         </View>
 
         {syllabusError ? (
@@ -244,19 +257,26 @@ export default function QuestionsListScreen() {
           ) : null}
         </View>
 
-        <Pressable
-          onPress={() => setShowFilters((s) => !s)}
-          accessibilityRole="button"
-          accessibilityState={{ expanded: showFilters }}
-          accessibilityLabel={`Filters${nFilters ? `, ${nFilters} active` : ''}`}
-          style={styles.filterToggle}
-        >
-          <Ionicons name="options-outline" size={18} color={theme.primaryText} />
-          <Text style={[Type.bodyBold, { color: theme.primaryText, fontSize: 14 }]}>
-            Filters{nFilters ? ` (${nFilters})` : ''}
-          </Text>
-          <Ionicons name={showFilters ? 'chevron-up' : 'chevron-down'} size={16} color={theme.primaryText} />
-        </Pressable>
+        <View style={styles.filterRow}>
+          <Pressable
+            onPress={() => setShowFilters((s) => !s)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: showFilters }}
+            accessibilityLabel={`Filters${nFilters ? `, ${nFilters} active` : ''}`}
+            style={styles.filterToggle}
+          >
+            <Ionicons name="options-outline" size={18} color={theme.primaryText} />
+            <Text style={[Type.bodyBold, { color: theme.primaryText, fontSize: 14 }]} accessibilityLiveRegion="polite">
+              Filters{nFilters ? ` (${nFilters})` : ''}
+            </Text>
+            <Ionicons name={showFilters ? 'chevron-up' : 'chevron-down'} size={16} color={theme.primaryText} />
+          </Pressable>
+          {nFilters > 0 ? (
+            <Pressable onPress={clearFilters} accessibilityRole="button" accessibilityLabel="Clear filters" style={styles.clearLink}>
+              <Text style={[Type.bodyBold, { color: theme.primaryText, fontSize: 14, textDecorationLine: 'underline' }]}>Clear</Text>
+            </Pressable>
+          ) : null}
+        </View>
 
         {showFilters ? (
           <View style={styles.filters}>
@@ -264,13 +284,13 @@ export default function QuestionsListScreen() {
             <ChipRow label="Difficulty" value={filters.difficulty} options={DIFF_OPTS} onChange={(v) => set('difficulty', v)} />
             <ChipRow label="Language" value={filters.language} options={LANG_OPTS} onChange={(v) => set('language', v)} />
             <ChipRow label="Status" value={filters.status} options={STATUS_OPTS} onChange={(v) => set('status', v)} />
-            <ChipRow label="Archived" value={filters.archived} options={ARCHIVED_OPTS} onChange={(v) => set('archived', v)} />
+            <ChipRow label="Show" value={filters.archived} options={ARCHIVED_OPTS} onChange={(v) => set('archived', v)} />
           </View>
         ) : null}
       </View>
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [theme, syllabus, syllabusError, filters, searchInput, showFilters, nFilters, loadSyllabus],
+    [theme, syllabus, syllabusError, filters, searchInput, showFilters, nFilters, loadSyllabus, menuOpen, narrow],
   );
 
   let body: 'skeleton' | 'error' | 'empty' | 'list' = 'list';
@@ -317,6 +337,24 @@ export default function QuestionsListScreen() {
           ) : null
         }
       />
+      <PopoverMenu visible={menuOpen} onClose={() => setMenuOpen(false)}>
+        <MenuItem
+          icon="library-outline"
+          label="Chapters and topics"
+          onPress={() => {
+            setMenuOpen(false);
+            router.push('/(teacher)/catalog' as Href);
+          }}
+        />
+        <MenuItem
+          icon="swap-vertical-outline"
+          label="Import / export"
+          onPress={() => {
+            setMenuOpen(false);
+            router.push('/(teacher)/import' as Href);
+          }}
+        />
+      </PopoverMenu>
       <SectionPicker
         visible={pickerOpen}
         syllabus={syllabus}
@@ -331,21 +369,6 @@ export default function QuestionsListScreen() {
 
 function Sep() {
   return <View style={{ height: 10 }} />;
-}
-
-function LinkBtn({ icon, label, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void }) {
-  const theme = useTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={({ pressed }) => [styles.linkBtn, { borderColor: Accents.border }, pressed && { opacity: 0.6 }]}
-    >
-      <Ionicons name={icon} size={16} color={theme.primaryText} />
-      <Text style={[Type.bodyBold, { color: theme.primaryText, fontSize: 13 }]}>{label}</Text>
-    </Pressable>
-  );
 }
 
 function EmptyState({ filtered, onClear, onNew }: { filtered: boolean; onClear: () => void; onNew: () => void }) {
@@ -384,16 +407,18 @@ const styles = StyleSheet.create({
   list: { flex: 1 },
   content: { padding: 16, paddingBottom: 32, width: '100%', maxWidth: 760, alignSelf: 'center', flexGrow: 1 },
   header: { gap: 12, marginBottom: 14 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' },
-  title: { fontSize: 26 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  title: { fontSize: 26, flex: 1 },
   primaryBtn: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 14, borderRadius: 999 },
-  linkRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   linkBtn: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, borderWidth: 1, borderRadius: 999 },
   topicBtn: { minHeight: 48, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, justifyContent: 'center' },
   searchBox: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 12, paddingLeft: 12 },
   searchInput: { flex: 1, fontSize: 15, minHeight: 44 },
   clear: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  filterToggle: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' },
+  menuBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  filterRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  filterToggle: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  clearLink: { minHeight: 44, minWidth: 44, justifyContent: 'center' },
   filters: { gap: 12 },
   empty: { alignItems: 'center', gap: 10, paddingVertical: 40, paddingHorizontal: 8 },
   end: { textAlign: 'center', fontSize: 12, padding: 16 },

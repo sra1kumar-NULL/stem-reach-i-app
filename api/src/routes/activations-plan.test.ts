@@ -116,6 +116,7 @@ test("plan: one transaction replaces the sections of every planned day (deduped)
     [{ id: SET_A }, { id: SET_B }], // upsert daily_sets returning ids
     [], // delete old sections
     [], // insert new sections
+    [], // delete cohorts (no target_cohorts supplied)
     [
       { id: SET_A, date: d1 },
       { id: SET_B, date: d2 },
@@ -125,7 +126,8 @@ test("plan: one transaction replaces the sections of every planned day (deduped)
       { daily_set_id: SET_A, id: S2, section_no: "12.2", name: "Coils", question_count: 6 },
       { daily_set_id: SET_B, id: S1, section_no: "12.1", name: "Fields", question_count: 5 },
       { daily_set_id: SET_B, id: S2, section_no: "12.2", name: "Coils", question_count: 6 },
-    ],
+    ], // range: sections
+    [], // range: cohorts
   ]);
   const res = await post(app, { dates: [d2, d1, d1], section_ids: [S1, S2, S1] });
   assert.equal(res.status, 200);

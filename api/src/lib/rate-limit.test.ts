@@ -40,9 +40,19 @@ test("memory is bounded: expired keys are swept and maxKeys caps live ones", () 
   assert.equal(l.size, 1, "expired keys swept on the next write");
 });
 
-test("clientKey takes the first X-Forwarded-For hop", () => {
-  assert.equal(clientKey("203.0.113.7, 10.0.0.1"), "203.0.113.7");
+test("clientKey takes the Nth hop from the RIGHT, never the client-supplied leftmost", () => {
+  assert.equal(clientKey("203.0.113.7, 10.0.0.1"), "10.0.0.1", "default: the entry the last proxy appended");
+  assert.equal(clientKey("1.1.1.1, 2.2.2.2, 203.0.113.7"), "203.0.113.7");
+  assert.equal(clientKey("evil, 203.0.113.7"), "203.0.113.7", "spoofed leading hops are ignored");
+  assert.equal(clientKey("evil, 203.0.113.7", undefined, 2), "evil", "2 trusted hops reach one entry further left");
   assert.equal(clientKey(" 198.51.100.2 "), "198.51.100.2");
+});
+
+test("clientKey falls back to the socket address, then a constant", () => {
+  assert.equal(clientKey(undefined, "192.0.2.1"), "192.0.2.1");
+  assert.equal(clientKey("", "192.0.2.1"), "192.0.2.1");
+  assert.equal(clientKey("203.0.113.7", "192.0.2.1", 2), "192.0.2.1", "header shorter than the trusted chain");
+  assert.equal(clientKey("203.0.113.7", "192.0.2.1", 0), "192.0.2.1", "0 hops = ignore the header");
   assert.equal(clientKey(undefined), "unknown-client");
   assert.equal(clientKey(""), "unknown-client");
 });

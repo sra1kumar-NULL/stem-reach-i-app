@@ -6,7 +6,9 @@ import { test } from 'node:test';
 import {
   buildCreatePayload,
   buildPatchPayload,
+  deleteBlockedHint,
   duplicateForm,
+  formatQuestionCounts,
   emptyForm,
   firstErrorField,
   formFromQuestion,
@@ -217,4 +219,17 @@ test('previewVerdict: MCQ compares to the marked option; flashcard maps grades',
   assert.equal(previewVerdict(fc, { self_eval: 'good' }).is_correct, true);
   assert.equal(previewVerdict(fc, { self_eval: 'again' }).is_correct, false);
   assert.equal(previewVerdict(fc, { self_eval: 'good' }).explanation, null);
+});
+
+test('formatQuestionCounts: live vs hidden wording', () => {
+  assert.equal(formatQuestionCounts(0, 0), 'No questions yet');
+  assert.equal(formatQuestionCounts(5, 5), '5 live');
+  assert.equal(formatQuestionCounts(16, 11), '11 live (5 hidden)');
+  assert.equal(formatQuestionCounts(3, 0), '0 live (3 hidden)');
+  assert.equal(formatQuestionCounts(3, 9), '3 live');
+});
+
+test('deleteBlockedHint pluralises', () => {
+  assert.equal(deleteBlockedHint(1), 'Move or delete its 1 question first');
+  assert.equal(deleteBlockedHint(16), 'Move or delete its 16 questions first');
 });

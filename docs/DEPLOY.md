@@ -251,7 +251,9 @@ It adds `profiles.question_language`, `questions.status / edited_at / updated_by
 - Environment variables: `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`; redeploy after changing them.
 - The web build ships a PWA manifest + icons (`mobile/public/`).
 
-### 4. Supabase Auth (dashboard)
+### 4. Supabase Auth (dashboard) — only needed for the optional email-reset link
+The default recovery path is the teacher setting a temporary password (no email needed). The email form is hidden
+unless the app is built with `EXPO_PUBLIC_EMAIL_RESET=1`; do this step first if you turn it on.
 - Authentication → URL Configuration: Site URL = the Vercel URL; add `<vercel-url>/reset-password` and
   `http://localhost:8081/reset-password` under Redirect URLs.
 - Authentication → Emails → SMTP Settings: custom SMTP (e.g. Resend, sender on a verified subdomain) so reset emails are delivered.
@@ -283,3 +285,52 @@ Every reset is recorded in `password_resets`. Limit: 20 resets per teacher per h
 - Real-database suite (65 tests, runs the real routes and SQL): start any empty Postgres 16, then
   `TEST_DATABASE_URL=postgresql://postgres:test@localhost:55432/stem npm test -w api`.
   **It truncates every table — never point it at a database you care about.** CI runs it automatically (job `db-integration`).
+
+## Round 3: startup checks, readiness and limits
+
+**Startup schema check.** Before listening, the API compares the live database with the Drizzle schema
+(every table and column, via `information_schema`). If anything is missing it logs
+
+```
+Database is missing: profiles.question_language, password_resets
+Run docs/migrations/2026-10-04-round2-ALL.sql in the Supabase SQL editor, then redeploy/restart.
+```
+
+and exits with code 1, so Render shows a failed deploy with the reason instead of a "healthy" service that
+answers HTTP 500 to everything. `SKIP_SCHEMA_CHECK=1` bypasses the check (escape hatch only).
+
+**Liveness vs readiness.**
+- `GET /api/healthz` — cheap liveness, no database access, always `{"ok":true}` while the process runs.
+- `GET /api/readyz` — runs `select 1`; `503 db_unavailable` when the database is unreachable (and
+  `503 schema_outdated` if the boot check had found missing columns). The boot schema result is cached, so this
+  does not query `information_schema` per call. `render.yaml` now points `healthCheckPath` at `/api/readyz`.
+- Keep-warm monitors (UptimeRobot etc.) should ping `/api/readyz`, not `/api/healthz`: it touches the
+  database, which keeps Supabase's free-tier project from pausing. (Older notes above that mention
+  `/api/healthz` for the monitor are superseded by this.)
+
+**Rate-limit client IP.** The limiter used the first `X-Forwarded-For` entry, which the client controls. It now
+uses the Nth entry from the right, `TRUSTED_PROXY_HOPS` (default `1` = the entry Render's proxy appended), and
+falls back to the socket address. Set `0` to ignore the header entirely if you ever run without a proxy; raise it
+if a CDN is put in front of Render. Limits (in-memory, per instance, reset on restart):
+
+| Limit | Value |
+|---|---|
+| Failed teacher-invite attempts per client IP | 5 per 15 min (unchanged) |
+| Failed teacher-invite attempts, all clients combined | 100 per hour (`429 too_many_attempts`, even with the right code) |
+| Signup attempts (successful or failed, any role) per client IP | 20 per hour (`429 too_many_attempts`) |
+
+Signup error messages are unchanged (the email-enumeration trade-off is a product decision).
+
+**Request size.** JSON bodies above 256 KB are refused with `413 payload_too_large`; `POST /api/questions/import`
+allows 1 MB.
+
+**Database pool.** `max` 10, 10 s connect timeout, 30 s idle timeout, `statement_timeout` 15 s, and a pool error
+listener so a dropped idle connection no longer crashes the process. On SIGTERM/SIGINT the API stops accepting,
+closes the server and pool and exits 0 (forced exit after 10 s). If your pooler rejects the `statement_timeout`
+startup parameter, the API will fail to connect; the boot log then shows the error (use the Supabase pooler host
+from the Connection pooling page).
+
+**New environment variables:** `TRUSTED_PROXY_HOPS` (default 1), `SKIP_SCHEMA_CHECK` (default off).
+
+**Demo accounts.** `npm run create-users` refuses to run when `SUPABASE_URL`/`DATABASE_URL` is not a local host
+unless `--i-know-this-creates-demo-accounts` is passed; the accounts it creates have a public password.

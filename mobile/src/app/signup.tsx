@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
+import { Redirect, router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, KeyboardAvoidingView, Platform, Pressable, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,15 +9,17 @@ import { ApiError, signup } from '@/api/client';
 import { Box } from '@/components/ui/box';
 import { Button, ButtonText } from '@/components/ui/button';
 import { Heading } from '@/components/ui/heading';
-import { Input, InputField } from '@/components/ui/input';
 import { Text as UIText } from '@/components/ui/text';
-import { Accents, Fonts, Nord, Type } from '@/constants/theme';
+import { Accents, Nord, Type } from '@/constants/theme';
+import { AuthField } from '@/components/auth-shell';
+import { useRouteGuard } from '@/hooks/use-route-guard';
 import { useTheme } from '@/hooks/use-theme';
 import { toFriendlyError } from '@/lib/friendly-error';
 import { useAuth } from '@/state/auth';
 
 export default function SignupScreen() {
   const { signIn } = useAuth();
+  const { redirect } = useRouteGuard();
   const theme = useTheme();
   const [role, setRole] = useState<'student' | 'teacher'>('student');
   const [name, setName] = useState('');
@@ -69,6 +71,8 @@ export default function SignupScreen() {
     }
   };
 
+  if (redirect) return <Redirect href={redirect} />;
+
   return (
     <LinearGradient colors={[theme.background, theme.backgroundElement]} style={{ flex: 1 }}>
       <SafeAreaView style={styles.safe}>
@@ -116,73 +120,64 @@ export default function SignupScreen() {
                 </Pressable>
               </Box>
 
-              <Input className="border border-border rounded-xl bg-background">
-                <InputField
-                  value={name}
-                  onChangeText={setName}
-                  placeholder="full name"
-                  accessibilityLabel="Full name"
-                  placeholderTextColor={theme.textSecondary}
-                  className="px-4 py-3 text-base"
-                  style={{ color: theme.text, fontFamily: Fonts.sans }}
-                />
-              </Input>
-              <Input className="border border-border rounded-xl bg-background">
-                <InputField
-                  value={email}
-                  onChangeText={setEmail}
-                  placeholder="email"
-                  accessibilityLabel="Email"
-                  placeholderTextColor={theme.textSecondary}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="email-address"
-                  className="px-4 py-3 text-base"
-                  style={{ color: theme.text, fontFamily: Fonts.sans }}
-                />
-              </Input>
-              <Input className="border border-border rounded-xl bg-background">
-                <InputField
-                  value={password}
-                  onChangeText={setPassword}
-                  placeholder="password (min 8 chars)"
-                  accessibilityLabel="Password, minimum 8 characters"
-                  placeholderTextColor={theme.textSecondary}
-                  secureTextEntry
-                  className="px-4 py-3 text-base"
-                  style={{ color: theme.text, fontFamily: Fonts.sans }}
-                />
-              </Input>
+              <AuthField
+                label="Full name"
+                value={name}
+                onChangeText={setName}
+                placeholder="full name"
+                autoComplete="name"
+                textContentType="name"
+                autoCapitalize="words"
+                returnKeyType="next"
+              />
+              <AuthField
+                label="Email"
+                value={email}
+                onChangeText={setEmail}
+                placeholder="email"
+                autoComplete="email"
+                textContentType="emailAddress"
+                keyboardType="email-address"
+                returnKeyType="next"
+              />
+              <AuthField
+                label="Password"
+                hint="At least 8 characters"
+                password
+                value={password}
+                onChangeText={setPassword}
+                placeholder="password (min 8 chars)"
+                accessibilityLabel="Password, minimum 8 characters"
+                autoComplete="new-password"
+                textContentType="newPassword"
+                returnKeyType="next"
+              />
               {role === 'teacher' && (
-                <Input className="border border-border rounded-xl bg-background">
-                  <InputField
-                    value={inviteCode}
-                    onChangeText={setInviteCode}
-                    placeholder="teacher invite code"
-                    accessibilityLabel="Teacher invite code"
-                    accessibilityHint="Provided by your school"
-                    placeholderTextColor={theme.textSecondary}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    secureTextEntry
-                    className="px-4 py-3 text-base"
-                    style={{ color: theme.text, fontFamily: Fonts.sans }}
-                  />
-                </Input>
+                <AuthField
+                  label="Teacher invite code"
+                  hint="Provided by your school"
+                  password
+                  value={inviteCode}
+                  onChangeText={setInviteCode}
+                  placeholder="teacher invite code"
+                  accessibilityLabel="Teacher invite code"
+                  accessibilityHint="Provided by your school"
+                  autoComplete="off"
+                  returnKeyType="go"
+                  onSubmitEditing={() => void submit()}
+                />
               )}
               {role === 'student' && (
-                <Input className="border border-border rounded-xl bg-background">
-                  <InputField
-                    value={classSection}
-                    onChangeText={setClassSection}
-                    placeholder="class section (e.g. 10A)"
-                    accessibilityLabel="Class section"
-                    placeholderTextColor={theme.textSecondary}
-                    autoCapitalize="characters"
-                    className="px-4 py-3 text-base"
-                    style={{ color: theme.text, fontFamily: Fonts.sans }}
-                  />
-                </Input>
+                <AuthField
+                  label="Class section"
+                  hint="For example 10A"
+                  value={classSection}
+                  onChangeText={setClassSection}
+                  placeholder="class section (e.g. 10A)"
+                  autoCapitalize="characters"
+                  returnKeyType="go"
+                  onSubmitEditing={() => void submit()}
+                />
               )}
 
               {error && (
@@ -191,7 +186,7 @@ export default function SignupScreen() {
                 </UIText>
               )}
 
-              <Button variant="default" size="lg" className="rounded-xl mt-1" onPress={submit} disabled={busy}>
+              <Button variant="default" size="lg" className="rounded-xl mt-1" onPress={submit} disabled={busy} accessibilityState={{ busy }}>
                 {busy ? <ActivityIndicator color={Nord.nord6} /> : <ButtonText style={Type.bodyBold}>Create account</ButtonText>}
               </Button>
             </Box>

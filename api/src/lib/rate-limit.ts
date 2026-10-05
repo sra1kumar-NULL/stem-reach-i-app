@@ -87,10 +87,24 @@ export class FailureLimiter {
 }
 
 /**
- * Client key for rate limiting behind Render's proxy: the first hop of
- * X-Forwarded-For (the original client), else a shared constant.
+ * Client key for rate limiting behind a reverse proxy.
+ *
+ * X-Forwarded-For is `client-supplied..., hop1, hop2`: every trusted proxy
+ * APPENDS the address it saw, so only entries counted from the RIGHT are
+ * trustworthy. With `trustedProxyHops` = N the key is the Nth entry from the
+ * right (default 1 = the entry Render's proxy appended); anything further left
+ * is client-controlled and ignored, so prepending fake hops cannot change the
+ * key. When the header has fewer than N entries (or N is 0, i.e. no proxy) the
+ * socket address is used instead.
  */
-export function clientKey(forwardedFor: string | undefined): string {
-  const first = forwardedFor?.split(",")[0]?.trim();
-  return first && first.length > 0 ? first : "unknown-client";
+export function clientKey(forwardedFor: string | undefined, socketAddress?: string, trustedProxyHops = 1): string {
+  if (trustedProxyHops > 0) {
+    const parts = (forwardedFor ?? "")
+      .split(",")
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+    const hop = parts.length >= trustedProxyHops ? parts[parts.length - trustedProxyHops] : undefined;
+    if (hop) return hop;
+  }
+  return socketAddress && socketAddress.length > 0 ? socketAddress : "unknown-client";
 }

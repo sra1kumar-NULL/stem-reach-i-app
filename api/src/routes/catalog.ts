@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, eq, max, ne } from "drizzle-orm";
+import { and, eq, inArray, max, ne } from "drizzle-orm";
 import { z } from "zod";
 import { chapters, dailySetSections, questions, sections } from "@stemreach/core/db/schema";
 import {
@@ -87,21 +87,33 @@ export function chapterRoutes(ctx: AppContext): Hono {
     }
   });
 
-  // Empty sections go with the chapter (FK cascade); any question blocks the delete.
+  // Empty, never-activated sections go with the chapter (FK cascade). Any question OR any activation
+  // of one of its sections blocks the delete (same rule as deleting a section). The check and the
+  // delete run in one transaction with the chapter and its sections locked FOR UPDATE: a concurrent
+  // question insert or activation takes a FOR KEY SHARE lock on the section row, so it either
+  // finishes first (and is seen by the checks) or waits until the delete is done (and then fails).
   app.delete("/:id", requireRole("teacher"), async (c) => {
     const { id } = parseOr400(IdParam, { id: c.req.param("id") });
-    const [existing] = await ctx.db.select({ id: chapters.id }).from(chapters).where(eq(chapters.id, id)).limit(1);
-    if (!existing) throw notFound("chapter not found");
+    await ctx.db.transaction(async (tx) => {
+      const [existing] = await tx.select({ id: chapters.id }).from(chapters).where(eq(chapters.id, id)).limit(1).for("update");
+      if (!existing) throw notFound("chapter not found");
+      const secRows = await tx.select({ id: sections.id }).from(sections).where(eq(sections.chapterId, id)).for("update");
+      const secIds = secRows.map((s) => s.id);
 
-    const [used] = await ctx.db
-      .select({ id: questions.id })
-      .from(questions)
-      .innerJoin(sections, eq(questions.sectionId, sections.id))
-      .where(eq(sections.chapterId, id))
-      .limit(1);
-    if (used) throw notEmpty("chapter still has questions; move or delete them first");
+      if (secIds.length > 0) {
+        const [used] = await tx.select({ id: questions.id }).from(questions).where(inArray(questions.sectionId, secIds)).limit(1);
+        if (used) throw notEmpty("chapter still has questions; move or delete them first");
 
-    await ctx.db.delete(chapters).where(eq(chapters.id, id));
+        const [activated] = await tx
+          .select({ id: dailySetSections.dailySetId })
+          .from(dailySetSections)
+          .where(inArray(dailySetSections.sectionId, secIds))
+          .limit(1);
+        if (activated) throw notEmpty("a topic in this chapter has been activated for a day, so the chapter cannot be deleted");
+      }
+
+      await tx.delete(chapters).where(eq(chapters.id, id));
+    });
     const out: OkResponse = { ok: true };
     return c.json(out);
   });
@@ -181,20 +193,23 @@ export function sectionRoutes(ctx: AppContext): Hono {
 
   app.delete("/:id", requireRole("teacher"), async (c) => {
     const { id } = parseOr400(IdParam, { id: c.req.param("id") });
-    const [existing] = await ctx.db.select({ id: sections.id }).from(sections).where(eq(sections.id, id)).limit(1);
-    if (!existing) throw notFound("topic not found");
+    // Locked FOR UPDATE for the same reason as the chapter delete (no check-then-delete race).
+    await ctx.db.transaction(async (tx) => {
+      const [existing] = await tx.select({ id: sections.id }).from(sections).where(eq(sections.id, id)).limit(1).for("update");
+      if (!existing) throw notFound("topic not found");
 
-    const [usedByQuestion] = await ctx.db.select({ id: questions.id }).from(questions).where(eq(questions.sectionId, id)).limit(1);
-    if (usedByQuestion) throw notEmpty("topic still has questions; move or delete them first");
+      const [usedByQuestion] = await tx.select({ id: questions.id }).from(questions).where(eq(questions.sectionId, id)).limit(1);
+      if (usedByQuestion) throw notEmpty("topic still has questions; move or delete them first");
 
-    const [activated] = await ctx.db
-      .select({ id: dailySetSections.dailySetId })
-      .from(dailySetSections)
-      .where(eq(dailySetSections.sectionId, id))
-      .limit(1);
-    if (activated) throw notEmpty("topic has been activated for a day and cannot be deleted");
+      const [activated] = await tx
+        .select({ id: dailySetSections.dailySetId })
+        .from(dailySetSections)
+        .where(eq(dailySetSections.sectionId, id))
+        .limit(1);
+      if (activated) throw notEmpty("topic has been activated for a day and cannot be deleted");
 
-    await ctx.db.delete(sections).where(eq(sections.id, id));
+      await tx.delete(sections).where(eq(sections.id, id));
+    });
     const out: OkResponse = { ok: true };
     return c.json(out);
   });

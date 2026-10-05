@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackButton } from '@/components/back-button';
 import { ConfirmSheet } from '@/components/confirm-sheet';
+import { ErrorState } from '@/components/error-state';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { useToast } from '@/components/toast';
 import { Box } from '@/components/ui/box';
@@ -23,8 +24,10 @@ import { Heading } from '@/components/ui/heading';
 import { Input, InputField } from '@/components/ui/input';
 import { Text as UIText } from '@/components/ui/text';
 import { Accents, Fonts, Nord, onAccent, Type } from '@/constants/theme';
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { useTheme } from '@/hooks/use-theme';
 import { useSelfStudyOwner } from '@/hooks/use-self-study-owner';
+import { toFriendlyError } from '@/lib/friendly-error';
 import { getSelfStudyDb, newLocalId, normalizeDeckId, type LocalCard, type LocalDeck } from '@/lib/self-study-db';
 import { SQL } from '@/lib/self-study-owner';
 import { isLearned, localDateString } from '@/lib/sm2';
@@ -48,6 +51,7 @@ export default function DeckScreen() {
   const deckId = normalizeDeckId(params.deckId) ?? '';
   const ownerId = useSelfStudyOwner();
   const theme = useTheme();
+  const reduceMotion = useReducedMotion();
   const { showToast } = useToast();
   const [deck, setDeck] = useState<LocalDeck | null>(null);
   const [cards, setCards] = useState<LocalCard[]>([]);
@@ -64,13 +68,22 @@ export default function DeckScreen() {
   const [pending, setPending] = useState<Pending | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  /**
+   * Key of the last successful load. Reloads for that same deck/owner (after a
+   * card save, on focus) run silently: flipping `loading` would swap the screen
+   * for the spinner branch, which has no editor <Modal>, and unmount it mid-edit.
+   */
+  const loadedKey = useRef<string | null>(null);
+
   const load = useCallback(() => {
     if (!deckId) {
       setLoading(false);
       return;
     }
     if (!ownerId) return; // auth still restoring
-    setLoading(true);
+    const key = `${ownerId}:${deckId}`;
+    const silent = loadedKey.current === key;
+    if (!silent) setLoading(true);
     setError(null);
     (async () => {
       try {
@@ -79,13 +92,17 @@ export default function DeckScreen() {
         const rows = row ? await db.getAllAsync<LocalCard>(SQL.listCards, [deckId, ownerId]) : [];
         setDeck(row ?? null);
         setCards(rows);
+        loadedKey.current = key;
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'failed to load deck');
+        const message = toFriendlyError(e, "Couldn't load this deck. Try again.");
+        // Keep what is on screen (and the open editor) when only a refresh failed.
+        if (silent) showToast(message, 'error');
+        else setError(message);
       } finally {
         setLoading(false);
       }
     })();
-  }, [deckId, ownerId]);
+  }, [deckId, ownerId, showToast]);
 
   // Reload on focus so due counts are fresh after a review session.
   useFocusEffect(useCallback(() => load(), [load]));
@@ -134,7 +151,7 @@ export default function DeckScreen() {
       }
       load();
     } catch (e) {
-      setEditError(e instanceof Error ? e.message : 'failed to save card');
+      setEditError(toFriendlyError(e, "Couldn't save the card. Try again."));
     } finally {
       setSaving(false);
     }
@@ -163,7 +180,7 @@ export default function DeckScreen() {
       }
     } catch (e) {
       setPending(null);
-      showToast(e instanceof Error ? e.message : 'failed to delete', 'error');
+      showToast(toFriendlyError(e, "Couldn't delete that. Try again."), 'error');
     } finally {
       setDeleting(false);
     }
@@ -195,14 +212,7 @@ export default function DeckScreen() {
       <Box className="flex-1 bg-background">
         <SafeAreaView style={styles.safe}>
           {header}
-          <Box className="items-center gap-3 p-6">
-            <UIText className="text-muted-foreground text-center" style={Type.body}>
-              {error}
-            </UIText>
-            <Button variant="default" className="min-h-11 rounded-xl" onPress={load} accessibilityRole="button">
-              <ButtonText style={Type.bodyBold}>Retry</ButtonText>
-            </Button>
-          </Box>
+          <ErrorState message={error} onRetry={load} />
         </SafeAreaView>
       </Box>
     );
@@ -252,11 +262,16 @@ export default function DeckScreen() {
             { value: newCount, label: 'new' },
             { value: learnedCount, label: 'learned' },
           ].map((chip) => (
-            <Box key={chip.label} className="flex-1 items-center gap-0.5 rounded-2xl bg-card py-3">
-              <UIText className="text-xl text-primary-text" style={Type.headingBold}>
+            <Box
+              key={chip.label}
+              className="flex-1 items-center gap-0.5 rounded-2xl bg-card py-3"
+              accessible
+              accessibilityLabel={`${chip.value} ${chip.label}`}
+            >
+              <UIText accessible={false} className="text-xl text-primary-text" style={Type.headingBold}>
                 {chip.value}
               </UIText>
-              <UIText className="text-xs text-muted-foreground" style={Type.body}>
+              <UIText accessible={false} className="text-xs text-muted-foreground" style={Type.body}>
                 {chip.label}
               </UIText>
             </Box>
@@ -301,14 +316,14 @@ export default function DeckScreen() {
             </Box>
           }
           renderItem={({ item }) => (
-            <Pressable
-              onPress={() => openEditor({ mode: 'edit', card: item })}
-              style={({ pressed }) => (pressed ? styles.pressed : null)}
-              accessibilityRole="button"
-              accessibilityLabel={`Edit card: ${item.front}`}
-              className="min-h-11 flex-row items-center gap-3 rounded-2xl bg-card p-3"
-            >
-              <Box className="flex-1 gap-0.5">
+            // Two sibling controls (never a button inside a button): the row opens the editor, the trash deletes.
+            <Box style={styles.cardRow} className="rounded-2xl bg-card">
+              <Pressable
+                onPress={() => openEditor({ mode: 'edit', card: item })}
+                style={({ pressed }) => [styles.cardMain, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel={`Edit card: ${item.front}`}
+              >
                 <UIText className="text-foreground" style={Type.bodySemi} numberOfLines={2}>
                   {item.front}
                 </UIText>
@@ -318,50 +333,51 @@ export default function DeckScreen() {
                 <UIText className="text-xs text-muted-foreground" style={Type.body}>
                   {item.due_date <= today ? 'Due today' : `Due ${item.due_date}`}
                 </UIText>
-              </Box>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-11 w-11 rounded-full p-0"
+              </Pressable>
+              <Pressable
                 onPress={() => setPending({ kind: 'card', card: item })}
+                style={({ pressed }) => [styles.cardDelete, pressed && styles.pressed]}
                 accessibilityRole="button"
                 accessibilityLabel={`Delete card: ${item.front}`}
               >
                 <Ionicons name="trash-outline" size={18} color={Accents.danger} />
-              </Button>
-            </Pressable>
+              </Pressable>
+            </Box>
           )}
           ListFooterComponent={
             <View style={styles.footerRow}>
-              <Pressable
+              <Button
+                variant="outline"
+                className="min-h-11 flex-1 rounded-xl"
                 onPress={() => openEditor({ mode: 'deck' })}
-                style={({ pressed }) => [styles.deleteDeck, pressed && styles.pressed]}
                 accessibilityRole="button"
                 accessibilityLabel="Rename or describe this deck"
               >
                 <Ionicons name="create-outline" size={16} color={Accents.primary} />
-                <UIText className="text-primary-text" style={Type.bodyBold}>
+                <ButtonText className="text-primary-text" style={Type.bodyBold}>
                   Edit deck
-                </UIText>
-              </Pressable>
-              <Pressable
+                </ButtonText>
+              </Button>
+              <Button
+                variant="outline"
+                className="min-h-11 flex-1 rounded-xl"
+                style={{ borderColor: Accents.danger }}
                 onPress={() => setPending({ kind: 'deck' })}
-                style={({ pressed }) => [styles.deleteDeck, pressed && styles.pressed]}
                 accessibilityRole="button"
                 accessibilityLabel="Delete this deck"
               >
                 <Ionicons name="trash-outline" size={16} color={Accents.danger} />
-                <UIText className="text-danger-text" style={Type.bodyBold}>
+                <ButtonText className="text-danger-text" style={Type.bodyBold}>
                   Delete deck
-                </UIText>
-              </Pressable>
+                </ButtonText>
+              </Button>
             </View>
           }
         />
 
         <Modal
           visible={editing != null}
-          animationType="fade"
+          animationType={reduceMotion ? 'none' : 'fade'}
           transparent
           statusBarTranslucent
           onRequestClose={closeEditor}
@@ -405,6 +421,14 @@ export default function DeckScreen() {
                   />
                 </Input>
 
+                {!canSave && !saving ? (
+                  <UIText className="text-xs text-muted-foreground" style={Type.body}>
+                    {editing?.mode === 'deck'
+                      ? 'A deck needs a title.'
+                      : 'Fill in both the front and the back to save this card.'}
+                  </UIText>
+                ) : null}
+
                 {editError ? (
                   <UIText accessibilityRole="alert" className="text-sm" style={{ ...Type.body, color: Accents.danger }}>
                     {editError}
@@ -419,7 +443,7 @@ export default function DeckScreen() {
                     disabled={saving}
                     accessibilityRole="button"
                   >
-                    <ButtonText style={Type.bodyBold}>{editing?.mode === 'add' ? 'Done' : 'Cancel'}</ButtonText>
+                    <ButtonText style={Type.bodyBold}>Close</ButtonText>
                   </Button>
                   <Button
                     variant="default"
@@ -447,6 +471,7 @@ export default function DeckScreen() {
               : "The card and its review history will be removed. This can't be undone."
           }
           confirmLabel="Delete"
+          destructive
           loading={deleting}
           onConfirm={handleConfirmDelete}
           onCancel={() => setPending(null)}
@@ -462,15 +487,10 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.7 },
   statsRow: { flexDirection: 'row', gap: 8 },
   actionsRow: { flexDirection: 'row', gap: 10 },
-  deleteDeck: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 16,
-    minHeight: 44,
-  },
-  footerRow: { flexDirection: 'row', justifyContent: 'center', gap: 24 },
+  cardRow: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingLeft: 12, paddingRight: 4 },
+  cardMain: { flex: 1, minHeight: 44, gap: 2, paddingVertical: 12 },
+  cardDelete: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  footerRow: { flexDirection: 'row', gap: 12, marginTop: 16 },
   modalRoot: { flex: 1, justifyContent: 'center', padding: 20 },
   scrim: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   modalActions: { flexDirection: 'row', gap: 10, marginTop: 8 },

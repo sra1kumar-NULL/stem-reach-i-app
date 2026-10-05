@@ -934,7 +934,7 @@ describe("db integration (real Postgres, real routes)", { skip: INTEGRATION_ENAB
   });
 
   describe("syllabus: tree, counts and sort_order", () => {
-    it("counts total and enabled questions per section, orders by sort_order, keeps empty sections, skips section-less chapters", async () => {
+    it("counts total and enabled questions per section, orders by sort_order, keeps empty sections and lists chapters that have no topics yet", async () => {
       await env.reset();
       const ch1 = await mkChapter(2, "chemistry", "Acids");
       const ch2 = await mkChapter(1, "physics", "Motion");
@@ -950,10 +950,11 @@ describe("db integration (real Postgres, real routes)", { skip: INTEGRATION_ENAB
       const res = await get("/api/syllabus");
       expectStatus(res, 200);
       const chaptersOut = res.body.chapters as { ncert_no: number; sections: { id: string; question_count: number; enabled_question_count: number; sort_order: number }[] }[];
-      assert.deepEqual(chaptersOut.map((c) => c.ncert_no), [1, 2], "ordered by ncert_no; the chapter without sections is omitted");
+      assert.deepEqual(chaptersOut.map((c) => c.ncert_no), [1, 2, 3], "ordered by ncert_no; a chapter with no topics yet is still listed");
+      assert.deepEqual(chaptersOut[2]!.sections, [], "so a teacher can add its first topic or delete it");
       assert.deepEqual(chaptersOut[0]!.sections.map((s) => [s.id, s.question_count, s.enabled_question_count, s.sort_order]), [[empty, 0, 0, 1]]);
       assert.deepEqual(chaptersOut[1]!.sections.map((s) => [s.id, s.question_count, s.enabled_question_count, s.sort_order]), [
-        [early, 5, 4, 1],
+        [early, 5, 3, 1], // enabled_question_count = enabled AND published (the draft no longer counts)
         [late, 1, 1, 2],
       ]);
       expectStatus(await get("/api/syllabus", T.student1), 403);
@@ -1599,7 +1600,9 @@ describe("db integration (real Postgres, real routes)", { skip: INTEGRATION_ENAB
       expectStatus(res, 200);
       assert.equal(res.body.total_students, 5);
       const done = res.body.done as { id: string; answered: number; completed: boolean }[];
-      assert.deepEqual(done.map((d) => [d.id, d.answered, d.completed]).sort(), [[STUDENT_1, 2, false], [STUDENT_2, 1, false]].sort());
+      // STUDENT_2 prefers Kannada and this set has no servable Kannada question: their daily target is 0
+      // (the feed serves them nothing), so one answer meets it. STUDENT_1 (en) has a target of 5.
+      assert.deepEqual(done.map((d) => [d.id, d.answered, d.completed]).sort(), [[STUDENT_1, 2, false], [STUDENT_2, 1, true]].sort());
       assert.equal(res.body.pending.length, 3);
       const cls = await get(`/api/reports/participation?date=${today()}&class_section=10A`);
       assert.equal(cls.body.total_students, 2);
@@ -1629,6 +1632,416 @@ describe("db integration (real Postgres, real routes)", { skip: INTEGRATION_ENAB
       expectStatus(await get("/api/reports/performance?section_id=nope"), 400);
       expectStatus(await get("/api/reports/performance?from=bad"), 400);
       expectStatus(await get("/api/reports/performance", T.student1), 403);
+    });
+  });
+  // ───────────────────────────── Round 3: data logic (progress, counts, deletes, indexes) ─────────────────────────────
+
+  describe("round 3: malformed bodies and report query validation", () => {
+    let sec: string;
+    let setId: string;
+    let card: string;
+    before(async () => {
+      await env.reset();
+      const ch = await mkChapter(70);
+      sec = await mkSection(ch, "70.1");
+      card = (await mkQ(sec)).id;
+      setId = await mkSet(today(), [sec]);
+    });
+
+    it("POST /activations and /activations/plan: malformed or empty JSON is 400 (was 500 on /activations)", async () => {
+      for (const raw of ["{bad", "", "not json"]) {
+        const a = await env.request("POST", "/api/activations", { token: T.teacherA, rawBody: raw });
+        expectStatus(a, 400);
+        assert.equal(a.body.error.code, "bad_request");
+        expectStatus(await env.request("POST", "/api/activations/plan", { token: T.teacherA, rawBody: raw }), 400);
+      }
+      assert.equal(env.logs.filter((l) => l.includes("SyntaxError")).length, 0, "no unhandled SyntaxError logged");
+    });
+
+    it("POST /submissions: malformed or empty JSON is 400 (was 500)", async () => {
+      for (const raw of ["{bad", "", "[]"]) expectStatus(await env.request("POST", "/api/submissions", { token: T.student1, rawBody: raw }), 400);
+      expectStatus(await post("/api/submissions", { daily_set_id: setId, question_id: card, self_eval: "good" }, T.student1), 200);
+    });
+
+    it("reports: impossible dates are 400 with the field name (were 500 from Postgres)", async () => {
+      for (const q of ["date=2026-02-30", "date=", "date=2026-13-01"]) {
+        const res = await get(`/api/reports/participation?${q}`);
+        expectStatus(res, 400);
+        assert.match(res.body.error.message, /date/);
+      }
+      for (const [q, field] of [["from=2026-02-30", "from"], ["to=2026-04-31", "to"], ["from=&to=", "from"], ["section_id=zzz", "section_id"]] as const) {
+        const res = await get(`/api/reports/performance?${q}`);
+        expectStatus(res, 400);
+        assert.match(res.body.error.message, new RegExp(field));
+      }
+      expectStatus(await get("/api/reports/participation?class_section=%00"), 400);
+      expectStatus(await get("/api/activations?date=2026-02-30"), 400);
+      expectStatus(await get(`/api/reports/participation?date=${today()}`), 200);
+      expectStatus(await get("/api/reports/performance?from=2026-02-28&to=2026-03-01"), 200);
+    });
+
+    it("participation for a valid date with nothing activated stays a 400, with the stable code no_activation", async () => {
+      const res = await get(`/api/reports/participation?date=${addDaysIso(today(), 9)}`);
+      expectStatus(res, 400);
+      assert.equal(res.body.error.code, "no_activation");
+    });
+  });
+
+  describe("round 3: language-aware progress is identical in feed, submissions and reports", () => {
+    let sec: string;
+    let setId: string;
+    let en: string[];
+    let kn: string[];
+    before(async () => {
+      await env.reset();
+      const ch = await mkChapter(71);
+      sec = await mkSection(ch, "71.1");
+      en = [];
+      kn = [];
+      for (let i = 0; i < 6; i++) en.push((await mkQ(sec, { questionText: `p en ${i}` })).id);
+      for (let i = 0; i < 2; i++) kn.push((await mkQ(sec, { questionText: `p kn ${i}`, language: "kn" })).id);
+      // never servable, in any language
+      await mkQ(sec, { questionText: "p draft", status: "draft" });
+      await mkQ(sec, { questionText: "p kn archived", language: "kn", enabled: false });
+      setId = await mkSet(today(), [sec]);
+    });
+
+    const submit = (token: string, q: string) => env.request("POST", "/api/submissions", { token, body: { daily_set_id: setId, question_id: q, self_eval: "good" } });
+
+    it("kn student: feed total 2 and the submit response says 2 (was 5), completing after the 2nd card", async () => {
+      const feed = await get("/api/feed/today", T.student2);
+      assert.equal(feed.body.progress.total, 2);
+      assert.deepEqual(new Set(idsOf(feed)), new Set(kn));
+      const first = await submit(T.student2, kn[0]!);
+      expectStatus(first, 200);
+      assert.deepEqual(first.body.progress, { answered: 1, total: 2, completed: false });
+      const second = await submit(T.student2, kn[1]!);
+      assert.deepEqual(second.body.progress, { answered: 2, total: 2, completed: true });
+      const after = await get("/api/feed/today", T.student2);
+      assert.deepEqual(after.body.progress, { answered: 2, total: 2, completed: true });
+      assert.deepEqual(after.body.questions, []);
+    });
+
+    it("en student: total 5; submit and feed agree at every step", async () => {
+      const feed = await get("/api/feed/today", T.student1);
+      assert.equal(feed.body.progress.total, 5);
+      assert.equal(feed.body.questions.length, 5);
+      const ids = idsOf(feed);
+      for (let i = 0; i < 5; i++) {
+        const res = await submit(T.student1, ids[i]!);
+        expectStatus(res, 200);
+        const f = await get("/api/feed/today", T.student1);
+        assert.deepEqual(res.body.progress, f.body.progress, `step ${i + 1}`);
+        assert.equal(res.body.progress.completed, i === 4);
+      }
+    });
+
+    it("both student: total 5 (min(5, 8) servable in the section) in feed and submit", async () => {
+      const feed = await get("/api/feed/today", T.student3);
+      assert.equal(feed.body.progress.total, 5);
+      const res = await submit(T.student3, idsOf(feed)[0]!);
+      assert.equal(res.body.progress.total, 5);
+      assert.equal(res.body.progress.answered, 1);
+      assert.equal(res.body.progress.completed, false);
+    });
+
+    it("participation uses each student's own language target (kn student who did 2 cards is completed)", async () => {
+      const res = await get(`/api/reports/participation?date=${today()}`);
+      expectStatus(res, 200);
+      const byId = new Map((res.body.done as { id: string; answered: number; completed: boolean }[]).map((d) => [d.id, d]));
+      assert.deepEqual(byId.get(STUDENT_2), { id: STUDENT_2, name: "Bhavana Student", answered: 2, completed: true });
+      assert.equal(byId.get(STUDENT_1)!.completed, true, "en student answered the full dose of 5");
+      assert.equal(byId.get(STUDENT_3)!.completed, false, "both student answered 1 of 5");
+    });
+  });
+
+  describe("round 3: counts, chapter delete and indexes", () => {
+    let ch: string;
+    let secA: string;
+    let secB: string;
+    before(async () => {
+      await env.reset();
+      ch = await mkChapter(72);
+      secA = await mkSection(ch, "72.1", "Counted", 1);
+      secB = await mkSection(ch, "72.2", "Other", 2);
+      await mkQ(secA, { questionText: "c published" });
+      await mkQ(secA, { questionText: "c published 2" });
+      await mkQ(secA, { questionText: "c draft", status: "draft" });
+      await mkQ(secA, { questionText: "c archived", enabled: false });
+      await mkQ(secA, { questionText: "c kn", language: "kn" });
+    });
+
+    it("syllabus keeps question_count as the total and counts only enabled+published in enabled_question_count", async () => {
+      const res = await get("/api/syllabus");
+      const sec = res.body.chapters.flatMap((c: { sections: unknown[] }) => c.sections).find((s: { id: string }) => s.id === secA);
+      assert.equal(sec.question_count, 5);
+      assert.equal(sec.enabled_question_count, 3, "2 en + 1 kn servable; the draft and the archived card are not");
+    });
+
+    it("activation responses count questions students can actually receive", async () => {
+      const day = addDaysIso(today(), 20);
+      const act = await post("/api/activations", { date: day, section_ids: [secA, secB] });
+      expectStatus(act, 200);
+      assert.deepEqual(act.body.sections.map((s: { section_no: string; question_count: number }) => [s.section_no, s.question_count]), [["72.1", 3], ["72.2", 0]]);
+      const range = await get(`/api/activations/range?from=${day}&to=${day}`);
+      assert.deepEqual(range.body.activations[0].sections.map((s: { question_count: number }) => s.question_count), [3, 0]);
+      await env.db.execute(sql`delete from daily_sets where set_date = ${day}::date`);
+    });
+
+    it("chapter delete is refused (409 not_empty) when a section was ever activated, and deletes nothing", async () => {
+      const empty = await mkChapter(73);
+      const emptySec = await mkSection(empty, "73.1");
+      await mkSet(addDaysIso(today(), 30), [emptySec]);
+      const res = await del(`/api/chapters/${empty}`);
+      expectStatus(res, 409);
+      assert.equal(res.body.error.code, "not_empty");
+      assert.equal(Number((await env.db.execute(sql`select count(*)::int as n from daily_set_sections where section_id = ${emptySec}::uuid`)).rows[0]!.n), 1);
+      assert.equal(Number((await env.db.execute(sql`select count(*)::int as n from chapters where id = ${empty}::uuid`)).rows[0]!.n), 1);
+      // section delete follows the same rule
+      expectStatus(await del(`/api/sections/${emptySec}`), 409);
+    });
+
+    it("chapter delete still works for a chapter whose topics are empty and never activated", async () => {
+      const ok = await mkChapter(74);
+      await mkSection(ok, "74.1");
+      expectStatus(await del(`/api/chapters/${ok}`), 200);
+      expectStatus(await del(`/api/chapters/${ok}`), 404);
+      const bare = await mkChapter(75);
+      expectStatus(await del(`/api/chapters/${bare}`), 200);
+      expectStatus(await del(`/api/chapters/${ch}`), 409); // still has questions
+    });
+
+    it("racing a chapter delete against an activation never loses an activation that succeeded", async () => {
+      for (let i = 0; i < 6; i++) {
+        const c = await mkChapter(80 + i);
+        const s = await mkSection(c, `${80 + i}.1`);
+        const day = addDaysIso(today(), 40 + i);
+        const [d, a] = await Promise.all([del(`/api/chapters/${c}`), post("/api/activations", { date: day, section_ids: [s] })]);
+        assert.notEqual(d.status, 500, JSON.stringify(d.body));
+        assert.notEqual(a.status, 500, JSON.stringify(a.body));
+        assert.ok(!(d.status === 200 && a.status === 200), `iteration ${i}: both succeeded, so the activation was cascaded away`);
+        if (a.status === 200) assert.equal(d.status, 409);
+        const sets = Number((await env.db.execute(sql`select count(*)::int as n from daily_sets ds where set_date = ${day}::date and not exists (select 1 from daily_set_sections x where x.daily_set_id = ds.id)`)).rows[0]!.n);
+        assert.equal(sets, 0, `iteration ${i}: no activation left without sections`);
+      }
+    });
+
+    it("the Round 3 indexes exist (schema.sql matches the migration)", async () => {
+      const rows = (await env.db.execute(sql`select indexname from pg_indexes where schemaname = 'public'`)).rows.map((r) => String(r.indexname));
+      for (const name of ["idx_submissions_question", "idx_submissions_set", "idx_review_states_question"]) assert.ok(rows.includes(name), `missing index ${name}`);
+    });
+  });
+
+  // ──────────────────────────── cohort targeting ───────────────────────────
+
+  // ── activation contract ───────────────────────────────────────────────────
+  describe("cohort targeting: activation contract", () => {
+    let secA: string;
+
+    before(async () => {
+      await env.reset();
+      const ch = await mkChapter(90);
+      secA = await mkSection(ch, "90.1", "Cohort Alpha", 1);
+      await mkQ(secA);
+    });
+
+    it("POST /activations with target_cohorts: ['10A'] → response has target_cohorts: ['10A']", async () => {
+      const date = addDaysIso(today(), 1);
+      const res = await post("/api/activations", { date, section_ids: [secA], target_cohorts: ["10A"] });
+      expectStatus(res, 200);
+      assert.deepEqual(res.body.target_cohorts, ["10A"]);
+      // GET snapshot also reflects the cohort
+      const snap = await get(`/api/activations?date=${date}`);
+      assert.deepEqual(snap.body.target_cohorts, ["10A"]);
+    });
+
+    it("POST /activations without target_cohorts → backward-compatible, no restriction (empty cohorts in snapshot)", async () => {
+      const date = addDaysIso(today(), 2);
+      const res = await post("/api/activations", { date, section_ids: [secA] });
+      expectStatus(res, 200);
+      assert.deepEqual(res.body.target_cohorts ?? [], []);
+    });
+
+    it("POST /activations with target_cohorts: [] → treated as unrestricted (empty array stored and returned)", async () => {
+      const date = addDaysIso(today(), 3);
+      const res = await post("/api/activations", { date, section_ids: [secA], target_cohorts: [] });
+      expectStatus(res, 200);
+      assert.deepEqual(res.body.target_cohorts, []);
+      // GET /activations/range also exposes it
+      const range = await get(`/api/activations/range?from=${date}&to=${date}`);
+      expectStatus(range, 200);
+      assert.deepEqual(range.body.activations[0].target_cohorts, []);
+    });
+
+    it("re-activating without target_cohorts clears a prior cohort restriction (atomic replace)", async () => {
+      const date = addDaysIso(today(), 4);
+      const first = await post("/api/activations", { date, section_ids: [secA], target_cohorts: ["10A"] });
+      assert.deepEqual(first.body.target_cohorts, ["10A"]);
+      const second = await post("/api/activations", { date, section_ids: [secA] });
+      assert.equal(second.body.daily_set_id, first.body.daily_set_id, "same daily_set row reused");
+      assert.deepEqual(second.body.target_cohorts ?? [], [], "cohort restriction was cleared");
+    });
+
+    it("GET /api/activations/range includes target_cohorts per activation", async () => {
+      const date = addDaysIso(today(), 5);
+      await post("/api/activations", { date, section_ids: [secA], target_cohorts: ["10A", "10B"] });
+      const range = await get(`/api/activations/range?from=${date}&to=${date}`);
+      expectStatus(range, 200);
+      assert.deepEqual([...range.body.activations[0].target_cohorts].sort(), ["10A", "10B"]);
+    });
+  });
+
+  // ── feed gate ─────────────────────────────────────────────────────────────
+  describe("cohort targeting: feed gate", () => {
+    let feedSec: string;
+
+    before(async () => {
+      await env.reset();
+      const ch = await mkChapter(91);
+      feedSec = await mkSection(ch, "91.1", "Feed Cohort", 1);
+      await mkQ(feedSec); // need at least one servable question
+      // Make STUDENT_4 have null class_section to test the null case
+      await env.db.execute(sql`update profiles set class_section = null where id = ${STUDENT_4}::uuid`);
+      // Activate TODAY targeted to "10A" only
+      await post("/api/activations", { section_ids: [feedSec], target_cohorts: ["10A"] });
+    });
+
+    it("student with matching class_section (10A) gets a non-empty feed", async () => {
+      const res = await get("/api/feed/today", T.student1); // STUDENT_1: 10A
+      expectStatus(res, 200);
+      assert.equal(res.body.empty, false, "10A student should receive a non-empty feed");
+    });
+
+    it("student with non-matching class_section (10B) gets empty feed", async () => {
+      const res = await get("/api/feed/today", T.student3); // STUDENT_3: 10B
+      expectStatus(res, 200);
+      assert.equal(res.body.empty, true, "10B student should receive empty feed for a 10A-only set");
+    });
+
+    it("student with class_section = null gets empty feed on a targeted set", async () => {
+      const res = await get("/api/feed/today", T.student4); // STUDENT_4: null (updated in before)
+      expectStatus(res, 200);
+      assert.equal(res.body.empty, true, "null-section student should receive empty feed");
+    });
+
+    it("unrestricted set: all students (including null-section) get a non-empty feed", async () => {
+      // Re-activate today without any cohort restriction
+      await post("/api/activations", { section_ids: [feedSec] });
+      const s1 = await get("/api/feed/today", T.student1); // 10A
+      const s3 = await get("/api/feed/today", T.student3); // 10B
+      const s4 = await get("/api/feed/today", T.student4); // null
+      expectStatus(s1, 200); expectStatus(s3, 200); expectStatus(s4, 200);
+      assert.equal(s1.body.empty, false, "10A student gets feed from unrestricted set");
+      assert.equal(s3.body.empty, false, "10B student gets feed from unrestricted set");
+      assert.equal(s4.body.empty, false, "null-section student gets feed from unrestricted set");
+    });
+  });
+
+  // ── submissions gate ──────────────────────────────────────────────────────
+  describe("cohort targeting: submissions gate", () => {
+    let subSec: string;
+    let subQ: string;       // for tests 8 and 9 (separate students, no conflict)
+    let subQReplay: string; // dedicated question for the replay idempotency test
+    let subSetId: string;
+
+    before(async () => {
+      await env.reset();
+      const ch = await mkChapter(92);
+      subSec = await mkSection(ch, "92.1", "Sub Cohort", 1);
+      subQ = (await mkQ(subSec, { qtype: "mcq" })).id;       // correctOption: 1
+      subQReplay = (await mkQ(subSec, { qtype: "mcq" })).id; // correctOption: 1
+      const act = await post("/api/activations", { section_ids: [subSec], target_cohorts: ["10A"] });
+      expectStatus(act, 200);
+      subSetId = act.body.daily_set_id;
+    });
+
+    it("in-cohort student (10A) submits → 200", async () => {
+      const res = await env.request("POST", "/api/submissions", {
+        token: T.student1, // STUDENT_1: 10A — inside the cohort
+        body: { daily_set_id: subSetId, question_id: subQ, selected_option: 1 },
+      });
+      expectStatus(res, 200);
+    });
+
+    it("out-of-cohort student (10B) submits a new answer → 400", async () => {
+      const res = await env.request("POST", "/api/submissions", {
+        token: T.student3, // STUDENT_3: 10B — outside the cohort
+        body: { daily_set_id: subSetId, question_id: subQ, selected_option: 1 },
+      });
+      expectStatus(res, 400);
+    });
+
+    it("out-of-cohort student replaying an existing answer → 200 (idempotent path skips cohort check)", async () => {
+      // Insert a prior submission directly for STUDENT_3, bypassing the gate
+      await mkSub(STUDENT_3, subQReplay, subSetId);
+      // Re-submit via the API — the idempotency path must succeed regardless of cohort
+      const res = await env.request("POST", "/api/submissions", {
+        token: T.student3, // 10B — out of cohort, but already has a stored answer
+        body: { daily_set_id: subSetId, question_id: subQReplay, selected_option: 0 },
+      });
+      expectStatus(res, 200);
+      assert.equal(res.body.is_correct, true, "replay returns the stored is_correct value");
+    });
+  });
+
+  // ── participation scope ───────────────────────────────────────────────────
+  describe("cohort targeting: participation scope", () => {
+    let partSec: string;
+    let partQ: string;
+    let partSetId: string;
+
+    before(async () => {
+      await env.reset();
+      const ch = await mkChapter(93);
+      partSec = await mkSection(ch, "93.1", "Part Cohort", 1);
+      partQ = (await mkQ(partSec)).id;
+      const act = await post("/api/activations", { section_ids: [partSec], target_cohorts: ["10A"] });
+      expectStatus(act, 200);
+      partSetId = act.body.daily_set_id;
+      // STUDENT_1 (10A) answers a question to appear in the "done" list
+      await mkSub(STUDENT_1, partQ, partSetId);
+    });
+
+    it("targeted set: participation lists only students in the targeted cohort (10A only)", async () => {
+      const res = await get(`/api/reports/participation?date=${today()}`);
+      expectStatus(res, 200);
+      // 10A has STUDENT_1 and STUDENT_2 — only they should appear
+      assert.equal(res.body.total_students, 2, "only the 2 students in 10A should be listed");
+      const allIds: string[] = [
+        ...res.body.done.map((d: { id: string }) => d.id),
+        ...res.body.pending.map((p: { id: string }) => p.id),
+      ];
+      assert.ok(allIds.includes(STUDENT_1), "STUDENT_1 (10A) is listed");
+      assert.ok(allIds.includes(STUDENT_2), "STUDENT_2 (10A) is listed");
+      assert.ok(!allIds.includes(STUDENT_3), "STUDENT_3 (10B) must NOT appear in 10A-targeted participation");
+    });
+
+    it("unrestricted set: participation lists all students", async () => {
+      // Re-activate without cohort restriction
+      await post("/api/activations", { section_ids: [partSec] });
+      const res = await get(`/api/reports/participation?date=${today()}`);
+      expectStatus(res, 200);
+      assert.equal(res.body.total_students, 5, "all 5 students listed for unrestricted set");
+    });
+  });
+
+  // ── students/sections endpoint ────────────────────────────────────────────
+  describe("GET /api/students/sections", () => {
+    before(async () => {
+      await env.reset();
+    });
+
+    it("teacher gets sections array with distinct class_section values", async () => {
+      const res = await get("/api/students/sections", T.teacherA);
+      expectStatus(res, 200);
+      assert.ok(Array.isArray(res.body.sections), "sections is an array");
+      // Seeded students have 10A and 10B; teachers have no class_section
+      assert.deepEqual([...res.body.sections].sort(), ["10A", "10B"]);
+    });
+
+    it("student calling sections → 403", async () => {
+      const res = await get("/api/students/sections", T.student1);
+      expectStatus(res, 403);
     });
   });
 });

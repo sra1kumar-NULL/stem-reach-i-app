@@ -1,17 +1,20 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, KeyboardAvoidingView, Platform, Pressable, type DimensionValue } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Fonts, Nord } from '@/constants/theme';
 import { useAuth } from '@/state/auth';
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
+import { useRouteGuard } from '@/hooks/use-route-guard';
 import { useTheme } from '@/hooks/use-theme';
+import { AuthField } from '@/components/auth-shell';
+import { toAuthError } from '@/lib/friendly-error';
 import { Box } from '@/components/ui/box';
 import { Button, ButtonText } from '@/components/ui/button';
 import { Heading } from '@/components/ui/heading';
-import { Input, InputField } from '@/components/ui/input';
 import { Text } from '@/components/ui/text';
 
 const DECOR: { icon: string; color: string; top?: DimensionValue; left?: DimensionValue; right?: DimensionValue; bottom?: DimensionValue; size: number; rot: string }[] = [
@@ -22,8 +25,10 @@ const DECOR: { icon: string; color: string; top?: DimensionValue; left?: Dimensi
 ];
 
 export default function LoginScreen() {
-  const { signIn } = useAuth();
+  const { signIn, notice, clearNotice } = useAuth();
+  const { redirect } = useRouteGuard();
   const theme = useTheme();
+  const reduceMotion = useReducedMotion();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -38,13 +43,17 @@ export default function LoginScreen() {
       Animated.delay(120),
       Animated.spring(pop, { toValue: 1, useNativeDriver: true, friction: 5, tension: 70 }),
     ]).start();
+  }, [pop]);
+
+  useEffect(() => {
+    if (reduceMotion) return;
     Animated.loop(
       Animated.sequence([
         Animated.timing(float, { toValue: 1, duration: 2500, useNativeDriver: true }),
         Animated.timing(float, { toValue: 0, duration: 2500, useNativeDriver: true }),
       ]),
     ).start();
-  }, [pop, float]);
+  }, [reduceMotion, float]);
 
   useEffect(() => {
     if (bounced == null) return;
@@ -61,15 +70,19 @@ export default function LoginScreen() {
     }
     setBusy(true);
     setError(null);
+    clearNotice();
     try {
       await signIn(email.trim(), password);
       router.replace('/'); // Ensure this navigates to the home screen
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Sign in failed');
+      // signIn() already throws friendly copy; anything else goes through the same helper.
+      setError(e instanceof Error && e.message ? e.message : toAuthError(e, 'Sign in failed. Please try again.'));
     } finally {
       setBusy(false);
     }
   };
+
+  if (redirect) return <Redirect href={redirect} />;
 
   return (
     <LinearGradient colors={[theme.background, theme.backgroundElement]} style={{ flex: 1 }}>
@@ -116,46 +129,40 @@ export default function LoginScreen() {
           </Heading>
 
           <Box className="bg-card rounded-2xl p-5 gap-3">
-            <Input className="border border-border rounded-xl bg-background">
-              <InputField
-                value={email}
-                onChangeText={setEmail}
-                placeholder="email"
-                accessibilityLabel="Email"
-                autoComplete="email"
-                textContentType="emailAddress"
-                placeholderTextColor={theme.textSecondary}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="email-address"
-                className="px-4 py-3 text-base"
-                style={{ color: theme.text, fontFamily: Fonts.sans }}
-              />
-            </Input>
-            <Input className="border border-border rounded-xl bg-background">
-              <InputField
-                value={password}
-                onChangeText={setPassword}
-                placeholder="password"
-                accessibilityLabel="Password"
-                autoComplete="password"
-                textContentType="password"
-                returnKeyType="go"
-                onSubmitEditing={() => void submit()}
-                placeholderTextColor={theme.textSecondary}
-                secureTextEntry
-                className="px-4 py-3 text-base"
-                style={{ color: theme.text, fontFamily: Fonts.sans }}
-              />
-            </Input>
+            <AuthField
+              label="Email"
+              value={email}
+              onChangeText={setEmail}
+              placeholder="email"
+              autoComplete="email"
+              textContentType="emailAddress"
+              keyboardType="email-address"
+              returnKeyType="next"
+            />
+            <AuthField
+              label="Password"
+              password
+              value={password}
+              onChangeText={setPassword}
+              placeholder="password"
+              autoComplete="password"
+              textContentType="password"
+              returnKeyType="go"
+              onSubmitEditing={() => void submit()}
+            />
 
+            {notice && !error && (
+              <Text accessibilityRole="alert" className="text-center text-warn-text text-sm" style={{ fontFamily: Fonts.sans }}>
+                {notice}
+              </Text>
+            )}
             {error && (
               <Text accessibilityRole="alert" className="text-center text-danger-text text-sm" style={{ fontFamily: Fonts.sans }}>
                 {error}
               </Text>
             )}
 
-            <Button variant="default" size="lg" className="rounded-xl mt-1" onPress={submit} disabled={busy}>
+            <Button variant="default" size="lg" className="rounded-xl mt-1" onPress={submit} disabled={busy} accessibilityState={{ busy }}>
               {busy ? (
                 <ActivityIndicator color={Nord.nord6} />
               ) : (
@@ -176,6 +183,7 @@ export default function LoginScreen() {
               onPress={() => router.push('/signup')}
               className="min-h-11 items-center justify-center py-1.5"
               accessibilityRole="link"
+              accessibilityLabel="New here? Create an account"
             >
               <Text className="text-primary-text text-sm font-bold" style={{ fontFamily: Fonts.sans }}>
                 New here? Create an account
@@ -188,7 +196,7 @@ export default function LoginScreen() {
             size="lg"
             className="min-h-11 rounded-xl mt-2"
             onPress={() => router.push('/(self-study)')}
-            accessibilityRole="button"
+            accessibilityRole="link"
             accessibilityLabel="Study offline, no account needed"
           >
             <ButtonText style={{ fontFamily: Fonts.sans }}>Study offline (no account)</ButtonText>

@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 @import 'uniwind';
 
@@ -20,7 +19,7 @@
       --popover-foreground: 46 52 64;
       --muted: 229 233 240;
       --muted-foreground: 76 86 106;
-      --destructive: 191 97 106;
+      --destructive: 163 63 74;
       --foreground: 46 52 64;
       --border: 76 86 106;
       --input: 76 86 106;
@@ -50,8 +49,10 @@
       --popover-foreground: 236 239 244;
       --muted: 59 66 82;
       --muted-foreground: 216 222 233;
-      --destructive: 191 97 106;
+      --destructive: 163 63 74;
       --foreground: 236 239 244;
+      /* Nord3 outlines (1.5 px on outline buttons/inputs) — the strongest Polar
+         Night step that still reads as a line, 1.69:1 on bg, 1.36:1 on card. */
       --border: 76 86 106;
       --input: 76 86 106;
       --ring: 136 192 208;
@@ -64,7 +65,7 @@
       --primary-text: 171 189 211;
       --success-text: 186 206 169;
       --warn-text: 235 203 139;
-      --danger-text: 222 173 178;
+      --danger-text: 232 187 192;
       --purple-text: 210 187 205;
     }
   }

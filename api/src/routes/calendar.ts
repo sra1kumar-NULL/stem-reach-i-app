@@ -9,11 +9,11 @@ import {
   type CalendarDayDto,
   type CalendarDayResponse,
   type CalendarMonthResponse,
-  type TeacherQuestionDto,
 } from "@stemreach/core";
 import { requireRole } from "../lib/auth.js";
 import { badRequest, type AppContext } from "../lib/http.js";
-import { parseOr400 } from "../lib/catalog-utils.js";
+import { toTeacherQuestionDto } from "../lib/question-dto.js";
+import { parseOr400 } from "../lib/validate.js";
 import { activationRange } from "./activations.js";
 
 /** First day, and the first day AFTER the month, as ISO dates. `2028-02` -> 2028-02-01 / 2028-03-01. */
@@ -37,24 +37,6 @@ export function localDayStart(date: string, tz: string): SQL {
 function share(answered: number, total: number): number {
   if (total <= 0) return 0;
   return Math.min(1, answered / total);
-}
-
-function toTeacherDto(row: typeof questions.$inferSelect): TeacherQuestionDto {
-  return {
-    id: row.id,
-    section_id: row.sectionId,
-    type: row.qtype,
-    language: row.language,
-    difficulty: row.difficulty,
-    question_text: row.questionText,
-    options: row.options,
-    answer: row.answer,
-    explanation: row.explanation,
-    enabled: row.enabled,
-    created_by: row.createdBy,
-    created_at: row.createdAt.toISOString(),
-    status: row.status,
-  };
 }
 
 /** Upper bound for questions listed on one calendar day. */
@@ -146,7 +128,7 @@ export function routes(ctx: AppContext): Hono {
     const body: CalendarDayResponse = {
       date,
       activated_sections: set?.sections ?? [],
-      questions_created: created.map(toTeacherDto),
+      questions_created: created.map((q) => toTeacherQuestionDto(q)),
       participation,
     };
     return c.json(body);

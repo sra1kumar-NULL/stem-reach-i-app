@@ -57,7 +57,7 @@ export const Colors = {
     primaryText: '#ABBDD3',
     successText: '#BACEA9',
     warnText: '#EBCB8B',
-    dangerText: '#DEADB2',
+    dangerText: '#E8BBC0',
     purpleText: '#D2BBCD',
   },
 } as const;
@@ -91,13 +91,20 @@ export function onAccent(fill: string): string {
 
 /** Semantic accent palette (Nord-derived) shared across light & dark mode. */
 export const Accents = {
-  primary: Nord.nord10,
+  /* Frost nord10 darkened (same hue) — mirrors the CSS `--primary`. nord6/white
+     labels on it reach 4.82:1 / 5.56:1 (raw nord10 gave 3.50:1 / 4.03:1).
+     This is a FILL colour: for primary-coloured text or icons on a theme
+     surface use `Colors[scheme].primaryText` instead (2.25:1 on Polar Night). */
+  primary: '#4C6A91',
   primarySoft: 'rgba(94, 129, 172, 0.18)',
   success: Nord.nord14,
   successSoft: 'rgba(163, 190, 140, 0.18)',
   warn: Nord.nord13,
   warnSoft: 'rgba(235, 203, 139, 0.18)',
   danger: Nord.nord11,
+  /** Solid destructive FILL — white / nord6 labels reach 6.24:1 / 5.41:1
+      (raw nord11 only gives 4.09:1). Mirrors the CSS `--destructive`. */
+  destructive: '#A33F4A',
   dangerSoft: 'rgba(191, 97, 106, 0.18)',
   purple: Nord.nord15,
   purpleSoft: 'rgba(180, 142, 173, 0.18)',

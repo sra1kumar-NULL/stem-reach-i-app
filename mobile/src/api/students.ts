@@ -19,3 +19,8 @@ export const resetStudentPassword = (id: string, temporaryPassword?: string) =>
 /** Sets the caller's own password and clears the must-change flag. */
 export const changePassword = (newPassword: string) =>
   apiFetch<OkResponse>('/api/me/change-password', { method: 'POST', body: { new_password: newPassword } });
+
+/** Returns the distinct class sections (cohorts) for students in the caller's org. */
+export async function getStudentSections(): Promise<{ sections: string[] }> {
+  return apiFetch('/api/students/sections');
+}

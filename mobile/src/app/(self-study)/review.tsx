@@ -1,19 +1,23 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackButton } from '@/components/back-button';
+import { ErrorState } from '@/components/error-state';
 import { hapticFlip, hapticLight, hapticSuccess } from '@/components/haptics';
+import { RatingButtons, SHOW_ANSWER_BG, SHOW_ANSWER_FG, type RatingValue } from '@/components/student/rating-buttons';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { useToast } from '@/components/toast';
 import { ZettelText } from '@/components/zettel-text';
 import { Box } from '@/components/ui/box';
 import { Button, ButtonText } from '@/components/ui/button';
+import { DateDisplay } from '@/components/ui/date-display';
 import { Heading } from '@/components/ui/heading';
 import { Text as UIText } from '@/components/ui/text';
-import { Accents, onAccent, Type } from '@/constants/theme';
+import { Accents, Type } from '@/constants/theme';
 import { useSelfStudyOwner } from '@/hooks/use-self-study-owner';
+import { toFriendlyError } from '@/lib/friendly-error';
 import { getSelfStudyDb, normalizeDeckId, type LocalCard } from '@/lib/self-study-db';
 import { SQL } from '@/lib/self-study-owner';
 import { calculateSM2, localDateString, type ReviewButton } from '@/lib/sm2';
@@ -39,6 +43,7 @@ export default function ReviewScreen() {
   const [againCount, setAgainCount] = useState(0);
   /** Cards in the deck at all, and the earliest future due date — for the nothing-due state. */
   const [deckInfo, setDeckInfo] = useState<{ total: number; nextDue: string | null }>({ total: 0, nextDue: null });
+  const [pendingGrade, setPendingGrade] = useState<RatingValue | null>(null);
   const announced = useRef(-1);
 
   const load = useCallback(() => {
@@ -65,7 +70,7 @@ export default function ReviewScreen() {
         setDeckInfo({ total: info?.total ?? 0, nextDue: info?.next_due ?? null });
       } catch (e) {
         setCards([]);
-        setError(e instanceof Error ? e.message : 'failed to load cards');
+        setError(toFriendlyError(e, "Couldn't load the cards. Try again."));
       } finally {
         setLoading(false);
       }
@@ -100,6 +105,7 @@ export default function ReviewScreen() {
   };
 
   const handleGrade = async (button: ReviewButton) => {
+    setPendingGrade(button);
     const current = cards[idx];
     if (!current || busy || !ownerId) return;
     setBusy(true);
@@ -117,7 +123,7 @@ export default function ReviewScreen() {
       if (button === 'again') setAgainCount((n) => n + 1);
       setIdx((i) => i + 1);
     } catch (e) {
-      showToast(e instanceof Error ? e.message : 'failed to save your grade', 'error');
+      showToast(toFriendlyError(e, "Couldn't save your answer. Try again."), 'error');
     } finally {
       setBusy(false);
     }
@@ -179,14 +185,7 @@ export default function ReviewScreen() {
             </Button>
           </Box>
         ) : error ? (
-          <Box className="flex-1 items-center justify-center gap-4 bg-background p-8">
-            <UIText className="text-muted-foreground text-center" style={Type.body}>
-              {error}
-            </UIText>
-            <Button variant="default" className="min-h-11 rounded-xl" onPress={load} accessibilityRole="button">
-              <ButtonText style={Type.bodyBold}>Retry</ButtonText>
-            </Button>
-          </Box>
+          <ErrorState fill message={error} onRetry={load} />
         ) : (!card || idx >= cards.length) && againCount > 0 ? (
           <Box className="flex-1 items-center justify-center gap-4 bg-background p-8">
             <Heading accessibilityRole="header" className="text-center text-2xl" style={Type.heading}>
@@ -213,9 +212,11 @@ export default function ReviewScreen() {
             <UIText className="text-muted-foreground text-center" style={Type.body}>
               {deckEmpty
                 ? 'This deck has no cards yet — add some from the deck screen.'
-                : deckInfo.nextDue
-                  ? `Nothing else is due today. Next card due ${deckInfo.nextDue}.`
-                  : 'Every card in this deck is reviewed — come back when they are due again.'}
+                : !deckInfo.nextDue
+                  ? 'Every card in this deck is reviewed — come back when they are due again.'
+                  : 'Nothing else is due today. Next card due '}
+              {!deckEmpty && deckInfo.nextDue ? <DateDisplay date={deckInfo.nextDue} format="long" /> : null}
+              {!deckEmpty && deckInfo.nextDue ? '.' : null}
             </UIText>
             <Button
               variant="default"
@@ -227,84 +228,75 @@ export default function ReviewScreen() {
             </Button>
           </Box>
         ) : (
-          <>
-            <UIText className="text-sm text-muted-foreground" style={Type.bodySemi}>
-              Card {idx + 1}/{cards.length}
-            </UIText>
+          <Box className="flex-1 rounded-3xl bg-card">
+            <ScrollView contentContainerStyle={styles.cardBody} keyboardShouldPersistTaps="handled">
+              <View style={styles.metaRow}>
+                <Box className="rounded-full bg-primary-soft px-2.5 py-1">
+                  <UIText className="text-xs font-extrabold uppercase tracking-wide text-primary-text" style={Type.bodyBold}>
+                    📚 Deck card
+                  </UIText>
+                </Box>
+                <UIText
+                  className="text-sm text-muted-foreground"
+                  style={Type.bodySemi}
+                  accessibilityLabel={`Card ${idx + 1} of ${cards.length}`}
+                >
+                  Card {idx + 1} of {cards.length}
+                </UIText>
+              </View>
 
-            <Box className="flex-1 justify-center gap-4 rounded-3xl bg-card p-6">
-              <ZettelText content={card.front} onLinkPress={openLinkedCard} />
+              {!card.front.includes('[[') ? (
+                <UIText className="text-2xl leading-9 font-semibold text-foreground" style={Type.heading}>
+                  {card.front}
+                </UIText>
+              ) : (
+                <ZettelText content={card.front} onLinkPress={openLinkedCard} />
+              )}
+
               {revealed ? (
                 <View style={styles.backArea}>
-                  <Box className="bg-border" style={styles.divider} />
-                  <ZettelText content={card.back} onLinkPress={openLinkedCard} />
+                  <Box className="rounded-2xl bg-secondary p-4">
+                    <ZettelText content={card.back} onLinkPress={openLinkedCard} />
+                  </Box>
                 </View>
               ) : (
                 <Button
                   variant="outline"
                   size="lg"
                   className="min-h-11 rounded-2xl"
+                  style={{ backgroundColor: SHOW_ANSWER_BG, borderColor: SHOW_ANSWER_BG }}
                   onPress={reveal}
                   accessibilityRole="button"
+                  accessibilityLabel="Show answer"
                   accessibilityState={{ expanded: revealed }}
                   accessibilityHint="Shows the back of the card"
                 >
-                  <ButtonText style={Type.bodyBold}>👀 Show Answer</ButtonText>
+                  <ButtonText style={{ ...Type.bodyBold, color: SHOW_ANSWER_FG }}>👀 Show Answer</ButtonText>
                 </Button>
               )}
-            </Box>
 
-            {revealed && (
-              <View style={styles.gradeRow}>
-                <Button
-                  variant="destructive"
-                  className="min-h-11 flex-1 rounded-2xl"
-                  onPress={() => handleGrade('again')}
-                  disabled={busy}
-                  accessibilityRole="button"
-                >
-                  <ButtonText style={Type.bodyBold}>🔁 Again</ButtonText>
-                </Button>
-                <Button
-                  variant="default"
-                  className="min-h-11 flex-1 rounded-2xl bg-warn"
-                  onPress={() => handleGrade('hard')}
-                  disabled={busy}
-                  accessibilityRole="button"
-                >
-                  <ButtonText style={{ ...Type.bodyBold, color: onAccent(Accents.warn) }}>😅 Hard</ButtonText>
-                </Button>
-                <Button
-                  variant="default"
-                  className="min-h-11 flex-1 rounded-2xl bg-success"
-                  onPress={() => handleGrade('good')}
-                  disabled={busy}
-                  accessibilityRole="button"
-                >
-                  <ButtonText style={{ ...Type.bodyBold, color: onAccent(Accents.success) }}>👌 Average</ButtonText>
-                </Button>
-                <Button
-                  variant="default"
-                  className="min-h-11 flex-1 rounded-2xl bg-teal"
-                  onPress={() => handleGrade('easy')}
-                  disabled={busy}
-                  accessibilityRole="button"
-                >
-                  <ButtonText style={{ ...Type.bodyBold, color: onAccent(Accents.teal) }}>⚡ Easy</ButtonText>
-                </Button>
-              </View>
-            )}
-          </>
+              {revealed ? (
+                <RatingButtons
+                  values={REVIEW_RATINGS}
+                  busy={busy}
+                  pending={pendingGrade}
+                  onPick={(v) => void handleGrade(v)}
+                />
+              ) : null}
+            </ScrollView>
+          </Box>
         )}
       </SafeAreaView>
     </Box>
   );
 }
 
+const REVIEW_RATINGS = ['again', 'hard', 'good', 'easy'] as const;
+
 const styles = StyleSheet.create({
   safe: { flex: 1, padding: 16, gap: 12 },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  backArea: { marginTop: 4 },
-  divider: { height: 1, marginVertical: 16 },
-  gradeRow: { flexDirection: 'row', gap: 10 },
+  cardBody: { flexGrow: 1, justifyContent: 'center', gap: 20, padding: 24 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  backArea: { gap: 12 },
 });

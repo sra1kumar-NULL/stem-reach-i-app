@@ -10,7 +10,7 @@ import { useAuth } from '@/state/auth';
 
 /** Auth gate: signed-in users go to their role home; everyone else to /login. */
 export default function Index() {
-  const { session, me, loading, meStatus, retryMe } = useAuth();
+  const { session, me, loading, meStatus, retryMe, mustChangePassword } = useAuth();
   const { confirmOut, signingOut, openConfirm, closeConfirm, confirmSignOut } = useConfirmSignOut();
 
   if (loading) {
@@ -25,7 +25,7 @@ export default function Index() {
 
   // A teacher reset this account's password: the API refuses everything else until
   // a new one is chosen, so this check comes before role routing (and before `me` loads).
-  if (session.user.app_metadata?.must_change_password === true) return <Redirect href="/change-password" />;
+  if (mustChangePassword) return <Redirect href="/change-password" />;
 
   if (me) {
     return <Redirect href={me.profile.role === 'teacher' ? '/(teacher)' : '/(student)'} />;

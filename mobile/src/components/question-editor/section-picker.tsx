@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Accents, Nord, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { formatQuestionCounts } from '@/lib/question-editor';
 import type { SyllabusResponse } from '@stemreach/core';
 
 export function sectionLabel(syllabus: SyllabusResponse | null, id: string | undefined): string | null {
@@ -120,7 +121,7 @@ export function SectionPicker({ visible, syllabus, value, onSelect, onClose, all
                   <Row
                     key={s.id}
                     label={`${s.section_no}  ${s.name}`}
-                    hint={`${s.question_count} questions`}
+                    hint={formatQuestionCounts(s.question_count, s.enabled_question_count)}
                     selected={s.id === value}
                     onPress={() => pick(s.id)}
                   />

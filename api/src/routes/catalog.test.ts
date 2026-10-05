@@ -98,18 +98,32 @@ test("PATCH /chapters/:id: keeping the same ncert_no skips the clash check", asy
   assert.deepEqual(spy.calls, ["select", "update"]);
 });
 
-test("DELETE /chapters/:id: 404, 409 not_empty, and success", async () => {
+test("DELETE /chapters/:id: 404, 409 not_empty (questions or activation), and success", async () => {
   assert.equal((await send(chaptersApp([[]]).app, "DELETE", `/${CH}`)).status, 404);
 
-  const blocked = await send(chaptersApp([[{ id: CH }], [{ id: "q1" }]]).app, "DELETE", `/${CH}`);
+  // chapter, its sections, then the question check
+  const blocked = await send(chaptersApp([[{ id: CH }], [{ id: SEC }], [{ id: "q1" }]]).app, "DELETE", `/${CH}`);
   assert.equal(blocked.status, 409);
   assert.equal(((await blocked.json()) as { error: { code: string } }).error.code, "not_empty");
 
-  const { spy, app } = chaptersApp([[{ id: CH }], []]);
+  // no questions, but one of its sections was activated for a day
+  const activated = chaptersApp([[{ id: CH }], [{ id: SEC }], [], [{ id: "set" }]]);
+  const res = await send(activated.app, "DELETE", `/${CH}`);
+  assert.equal(res.status, 409);
+  assert.equal(((await res.json()) as { error: { code: string } }).error.code, "not_empty");
+  assert.ok(!activated.spy.calls.includes("delete"), "nothing deleted");
+
+  const { spy, app } = chaptersApp([[{ id: CH }], [{ id: SEC }], [], []]);
   const ok = await send(app, "DELETE", `/${CH}`);
   assert.equal(ok.status, 200);
   assert.deepEqual(await ok.json(), { ok: true });
-  assert.deepEqual(spy.calls, ["select", "select", "delete"]);
+  assert.deepEqual(spy.calls, ["select", "select", "select", "select", "delete"]);
+  assert.equal(spy.transactions, 1, "check and delete share one transaction");
+
+  // an empty chapter (no sections) skips the question/activation checks
+  const empty = chaptersApp([[{ id: CH }], []]);
+  assert.equal((await send(empty.app, "DELETE", `/${CH}`)).status, 200);
+  assert.deepEqual(empty.spy.calls, ["select", "select", "delete"]);
 });
 
 // ── sections ────────────────────────────────────────────────────────────────

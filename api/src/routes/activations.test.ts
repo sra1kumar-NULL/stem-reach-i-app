@@ -54,3 +54,23 @@ test("GET rejects a malformed date query", async () => {
   const res = await harness(activations.routes(fakeCtx(db))).request("/?date=2026-13-01");
   assert.equal(res.status, 400);
 });
+
+test("POST / and /plan: malformed or empty JSON is 400, not 500, and touches no table", async () => {
+  for (const path of ["/", "/plan"]) {
+    for (const raw of ["{bad", ""]) {
+      const { db, calls } = fakeDb();
+      const res = await harness(activations.routes(fakeCtx(db))).request(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: raw });
+      assert.equal(res.status, 400, `${path} ${JSON.stringify(raw)}`);
+      assert.equal(calls.length, 0);
+    }
+  }
+});
+
+test("GET ? date validation names the field: impossible and empty dates are 400", async () => {
+  for (const q of ["?date=2026-02-30", "?date=", "?date=nope"]) {
+    const { db } = fakeDb();
+    const res = await harness(activations.routes(fakeCtx(db))).request(`/${q}`);
+    assert.equal(res.status, 400, q);
+    assert.match(((await res.json()) as { error: { message: string } }).error.message, /date/);
+  }
+});

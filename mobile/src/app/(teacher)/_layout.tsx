@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Tabs, useSegments } from 'expo-router';
+import { Redirect, Tabs, useSegments } from 'expo-router';
 import { Platform, type ColorValue } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Accents, Fonts } from '@/constants/theme';
+import { useRouteGuard } from '@/hooks/use-route-guard';
 import { useTheme } from '@/hooks/use-theme';
+import { LoadingScreen } from '@/components/ui/loading-screen';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -23,6 +25,12 @@ export default function TeacherLayout() {
   const segments = useSegments() as string[];
   // The editor needs the full height (keyboard, sticky save bar), so the bar hides there.
   const editing = segments.includes('edit');
+  const { redirect, pending } = useRouteGuard();
+
+  if (redirect) return <Redirect href={redirect} />;
+  if (pending) {
+    return <LoadingScreen />;
+  }
 
   return (
     <Tabs
@@ -58,7 +66,7 @@ export default function TeacherLayout() {
       />
       <Tabs.Screen
         name="reports"
-        options={{ title: 'Reports', tabBarAccessibilityLabel: 'Reports', tabBarIcon: icon('bar-chart', 'bar-chart-outline') }}
+        options={{ title: 'Performance', tabBarAccessibilityLabel: 'Performance', tabBarIcon: icon('bar-chart', 'bar-chart-outline') }}
       />
       <Tabs.Screen
         name="profile"

@@ -23,6 +23,7 @@ const reviewCard = {
 test("serves due reviews from sections not activated today, with their section label", async () => {
   const { db } = fakeDb([
     [{ id: SET, setDate: "2026-10-03" }], // today's set
+    [], // daily_set_cohorts (unrestricted — 0 rows)
     [{ id: SEC }], // activated sections
     [], // answered in current sections
     [{ sectionId: SEC, count: 0 }], // target: activated section has no enabled questions

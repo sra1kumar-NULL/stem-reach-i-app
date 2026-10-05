@@ -1,0 +1,7 @@
+{
+  "name": "daily-revision-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Browser end-to-end suites for the web build (not part of the npm workspaces).",
+  "dependencies": { "playwright-core": "^1.63.0" }
+}
