@@ -112,7 +112,7 @@ echo "sdk.dir=$ANDROID_HOME" > android/local.properties
 log "gradlew assembleRelease"
 # Clear the cached JS bundle so a changed EXPO_PUBLIC_* value is actually re-inlined.
 rm -rf android/app/build/generated/assets/react android/app/build/intermediates/assets
-(cd android && ./gradlew assembleRelease --no-daemon)
+(cd android && ./gradlew assembleRelease)
 
 APK="$MOBILE/android/app/build/outputs/apk/release/app-release.apk"
 [[ -f "$APK" ]] || die "build finished but $APK is missing"
