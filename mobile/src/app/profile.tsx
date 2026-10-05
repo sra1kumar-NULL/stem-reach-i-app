@@ -28,6 +28,9 @@ import { useThemePreference } from '@/state/theme';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 
+/** Selected segment fill: white label gives >= 6:1 in both themes. */
+const SEGMENT_SELECTED = '#446083';
+
 const THEME_LABEL = { system: 'System', light: 'Light', dark: 'Dark' } as const;
 
 /**
@@ -74,7 +77,7 @@ export default function ProfileScreen() {
         <Box className="flex-1 bg-background">
           <SafeAreaView style={styles.safe}>
             <View style={styles.headerRow}>
-              <BackButton fallback="/" />
+              <BackButton fallback="/" iconOnly />
             </View>
             <ErrorState fill message={toFriendlyError(new TypeError('Failed to fetch'), "Couldn't load your profile.")} onRetry={retryMe} />
           </SafeAreaView>
@@ -156,6 +159,15 @@ export default function ProfileScreen() {
     }
   };
 
+  const noStats =
+    isStudent &&
+    me.streak.current === 0 &&
+    me.streak.best === 0 &&
+    me.totals.questions_answered === 0 &&
+    me.srs.due_today === 0 &&
+    me.srs.due_tomorrow === 0 &&
+    me.srs.learned === 0 &&
+    me.srs.reviewed === 0;
   const version = Constants.expoConfig?.version ?? '1.0.0';
   const avatarBg = isStudent ? Accents.primary : Accents.purple;
 
@@ -166,11 +178,11 @@ export default function ProfileScreen() {
           <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
             <View style={styles.column}>
               <View style={styles.headerRow}>
-                <BackButton fallback={home} />
+                <BackButton fallback={home} iconOnly />
+                <Heading accessibilityRole="header" style={[Type.heading, { fontSize: 28, lineHeight: 36 }]}>
+                  Profile
+                </Heading>
               </View>
-              <Heading accessibilityRole="header" style={[Type.heading, { fontSize: 28, lineHeight: 36 }]}>
-                Profile
-              </Heading>
 
               {/* Identity */}
               <Card>
@@ -184,27 +196,28 @@ export default function ProfileScreen() {
                     <UIText style={[Type.headingBold, { fontSize: 26, color: onAccent(avatarBg) }]}>{initials(profile.full_name)}</UIText>
                   </View>
                   <View style={styles.identityText}>
-                    {editingName ? null : (
-                      <View style={styles.nameRow}>
-                        <Heading accessibilityRole="header" className="flex-1 text-xl" style={Type.heading} numberOfLines={2}>
-                          {profile.full_name}
-                        </Heading>
-                        <Pressable
-                          onPress={startEditName}
-                          style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
-                          accessibilityRole="button"
-                          accessibilityLabel="Edit name"
-                        >
-                          <Ionicons name="pencil" size={18} color={Accents.primary} />
-                        </Pressable>
-                      </View>
-                    )}
+                    <Heading accessibilityRole="header" className="text-xl" style={Type.heading} numberOfLines={2}>
+                      {profile.full_name}
+                    </Heading>
                     <UIText className="text-sm text-muted-foreground" style={Type.body}>
                       {isStudent ? 'Student' : 'Teacher'}
                       {profile.class_section ? ` · Class ${profile.class_section}` : ''}
                     </UIText>
                   </View>
                 </View>
+
+                {editingName ? null : (
+                  <Button
+                    variant="outline"
+                    className="min-h-11 self-start rounded-xl"
+                    onPress={startEditName}
+                    accessibilityRole="button"
+                    accessibilityLabel="Edit name"
+                  >
+                    <Ionicons name="pencil" size={16} color={theme.textSecondary} />
+                    <ButtonText style={Type.bodyBold}>Edit name</ButtonText>
+                  </Button>
+                )}
 
                 {editingName ? (
                   <View style={styles.editBlock}>
@@ -253,45 +266,40 @@ export default function ProfileScreen() {
               {isStudent ? (
                 <>
                   <SectionTitle>Question language</SectionTitle>
-                  <Card>
-                    <View accessibilityRole="radiogroup" accessibilityLabel="Question language" style={styles.langGroup}>
-                      {LANGUAGE_OPTIONS.map((opt) => {
-                        const selected = language === opt.value;
-                        return (
-                          <Pressable
-                            key={opt.value}
-                            onPress={() => void chooseLanguage(opt.value)}
-                            accessibilityRole="radio"
-                            accessibilityState={{ selected, checked: selected }}
-                            aria-checked={selected}
-                            accessibilityLabel={`${opt.label}. ${opt.hint}`}
-                            style={({ pressed }) => [
-                              styles.langOption,
-                              { borderColor: selected ? Accents.primary : Accents.border, backgroundColor: selected ? Accents.primarySoft : 'transparent' },
-                              pressed && styles.pressed,
-                            ]}
-                          >
-                            <Ionicons name={selected ? 'radio-button-on' : 'radio-button-off'} size={20} color={selected ? Accents.primary : theme.textSecondary} />
-                            <View style={styles.langText}>
-                              <UIText className="text-base text-foreground" style={Type.bodyBold}>
-                                {opt.label}
-                              </UIText>
-                              <UIText className="text-xs text-muted-foreground" style={Type.body}>
-                                {opt.hint}
-                              </UIText>
-                            </View>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  </Card>
+                  <View accessibilityRole="radiogroup" accessibilityLabel="Question language" style={styles.segment}>
+                    {LANGUAGE_OPTIONS.map((opt) => {
+                      const selected = language === opt.value;
+                      return (
+                        <Pressable
+                          key={opt.value}
+                          onPress={() => void chooseLanguage(opt.value)}
+                          accessibilityRole="radio"
+                          accessibilityState={{ checked: selected }}
+                          aria-checked={selected}
+                          accessibilityLabel={`${opt.label}. ${opt.hint}`}
+                          style={({ pressed }) => [
+                            styles.segmentItem,
+                            selected && { backgroundColor: SEGMENT_SELECTED },
+                            pressed && styles.pressed,
+                          ]}
+                        >
+                          <UIText style={[Type.bodyBold, { fontSize: 15, color: selected ? '#FFFFFF' : theme.text }]} numberOfLines={1}>
+                            {opt.label}
+                          </UIText>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  <UIText className="text-xs text-muted-foreground" style={Type.body} accessible={false}>
+                    {LANGUAGE_OPTIONS.find((o) => o.value === language)?.hint}
+                  </UIText>
                 </>
               ) : null}
 
               {/* My space */}
               <SectionTitle>My space</SectionTitle>
               <Card>
-                <Row icon="library-outline" label="My decks" hint="Your own flashcards" onPress={() => router.push('/(self-study)')} />
+                <Row icon="library-outline" label="My decks" hint="Your own flashcards, saved on this phone" onPress={() => router.push('/(self-study)')} />
               </Card>
 
               {isStudent ? (
@@ -299,18 +307,29 @@ export default function ProfileScreen() {
                   <UIText className="text-base text-foreground" style={Type.bodyBold}>
                     My stats
                   </UIText>
-                  <View style={styles.statGrid}>
-                    <Stat icon="flame" color={Accents.warn} label="Streak" value={`${me.streak.current}`} suffix="days" />
-                    <Stat icon="trophy" color={Accents.purple} label="Best streak" value={`${me.streak.best}`} suffix="days" />
-                    <Stat icon="checkmark-circle" color={Accents.success} label="Accuracy" value={percent(me.totals.accuracy)} />
-                    <Stat icon="help-circle" color={Accents.primary} label="Answered" value={`${me.totals.questions_answered}`} />
-                  </View>
-                  <View style={styles.srsRow} accessible accessibilityLabel={`Spaced repetition: ${me.srs.due_today} due today, ${me.srs.due_tomorrow} due tomorrow, ${me.srs.learned} learned, ${me.srs.reviewed} reviewed`}>
-                    <Chip label="Due today" value={me.srs.due_today} />
-                    <Chip label="Tomorrow" value={me.srs.due_tomorrow} />
-                    <Chip label="Learned" value={me.srs.learned} />
-                    <Chip label="Reviewed" value={me.srs.reviewed} />
-                  </View>
+                  {noStats ? (
+                    <UIText className="text-sm text-muted-foreground" style={Type.body}>
+                      Answer your first question to start your stats.
+                    </UIText>
+                  ) : (
+                    <>
+                      <View style={styles.statGrid}>
+                        <Stat icon="flame" color={Accents.warn} label="Streak" value={`${me.streak.current}`} suffix="days" />
+                        <Stat icon="trophy" color={Accents.purple} label="Best streak" value={`${me.streak.best}`} suffix="days" />
+                        <Stat icon="checkmark-circle" color={Accents.success} label="Accuracy" value={percent(me.totals.accuracy)} />
+                        <Stat icon="help-circle" color={Accents.primary} label="Answered" value={`${me.totals.questions_answered}`} />
+                      </View>
+                      <UIText className="text-xs text-muted-foreground" style={Type.bodyBold}>
+                        Deck cards due
+                      </UIText>
+                      <View style={styles.srsRow} accessible accessibilityLabel={`Deck cards: ${me.srs.due_today} due today, ${me.srs.due_tomorrow} due tomorrow, ${me.srs.learned} learned, ${me.srs.reviewed} reviewed`}>
+                        <Chip label="Today" value={me.srs.due_today} />
+                        <Chip label="Tomorrow" value={me.srs.due_tomorrow} />
+                        <Chip label="Learned" value={me.srs.learned} />
+                        <Chip label="Reviewed" value={me.srs.reviewed} />
+                      </View>
+                    </>
+                  )}
                 </Card>
               ) : null}
 
@@ -322,7 +341,8 @@ export default function ProfileScreen() {
                 <Row
                   icon="key-outline"
                   label="Change password"
-                  chevron={pwOpen ? 'chevron-up' : 'chevron-down'}
+                  hint="Choose a new sign-in password"
+                  rotated={pwOpen}
                   onPress={() => {
                     setPwOpen((o) => !o);
                     setPwError(null);
@@ -414,7 +434,7 @@ function ProfileSkeleton() {
       <SafeAreaView style={styles.safe}>
         <View style={styles.column} accessibilityRole="progressbar" accessibilityLabel="Loading profile">
           <View style={styles.headerRow}>
-            <BackButton fallback="/" />
+            <BackButton fallback="/" iconOnly />
           </View>
           <Skeleton className="h-9 w-40 rounded-lg" />
           <Skeleton className="h-36 w-full rounded-2xl" />
@@ -448,7 +468,7 @@ function Row({
   label,
   hint,
   value,
-  chevron = 'chevron-forward',
+  rotated,
   expanded,
   onPress,
 }: {
@@ -456,7 +476,8 @@ function Row({
   label: string;
   hint?: string;
   value?: string;
-  chevron?: IconName;
+  /** Chevron points down (open) instead of right. */
+  rotated?: boolean;
   expanded?: boolean;
   onPress: () => void;
 }) {
@@ -485,7 +506,7 @@ function Row({
           {value}
         </UIText>
       ) : null}
-      <Ionicons name={chevron} size={18} color={theme.textSecondary} />
+      <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} style={rotated ? { transform: [{ rotate: '90deg' }] } : undefined} />
     </Pressable>
   );
 }
@@ -523,22 +544,19 @@ function Chip({ label, value }: { label: string; value: number }) {
 const styles = StyleSheet.create({
   safe: { flex: 1 },
   scroll: { flexGrow: 1, paddingHorizontal: 16, paddingBottom: 32 },
-  column: { width: '100%', maxWidth: 560, alignSelf: 'center', gap: 12, paddingHorizontal: 0, paddingTop: 4 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', minHeight: 44 },
+  column: { width: '100%', maxWidth: 560, alignSelf: 'center', gap: 10, paddingHorizontal: 0, paddingTop: 0 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 44 },
   identity: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   avatar: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
-  identityText: { flex: 1, minWidth: 0, gap: 2 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  iconBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  identityText: { flex: 1, minWidth: 0, gap: 0 },
   pressed: { opacity: 0.7 },
   emailRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   editBlock: { gap: 10 },
   input: { minHeight: 48, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, fontSize: 16 },
   btnRow: { flexDirection: 'row', gap: 10 },
-  langGroup: { gap: 8 },
-  langOption: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 8 },
-  langText: { flex: 1, minWidth: 0 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 48 },
+  segment: { flexDirection: 'row', gap: 4, padding: 4, borderRadius: 14, borderWidth: 1, borderColor: Accents.border },
+  segmentItem: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 10, paddingHorizontal: 6 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56 },
   rowText: { flex: 1, minWidth: 0 },
   statGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   stat: { flexBasis: '47%', flexGrow: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 },

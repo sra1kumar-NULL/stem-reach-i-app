@@ -24,7 +24,7 @@ UI. Fully white-label: no school-specific branding, so any school can adopt it.
 
 **Everyone**
 - Self signup and sign-in (Supabase Auth); teacher signup needs an invite code
-- Forgot password by email link, or ask a teacher to set a temporary password
+- Forgot password: the teacher sets a temporary password and the student must choose a new one at next sign-in (an email reset link is available behind `EXPO_PUBLIC_EMAIL_RESET=1`, once SMTP is configured)
 - Nord theme with light/dark modes, Fredoka + Nunito fonts, toasts and friendly error screens
 
 ## Repository layout
@@ -68,6 +68,7 @@ Demo accounts (dummy, for testing only): see [`dummy-creds.json`](dummy-creds.js
 | `api/.env` | `PORT` | API port (default 3000) |
 | `mobile/.env` | `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Public Supabase client config |
 | `mobile/.env` | `EXPO_PUBLIC_API_URL` | API base URL. Falls back to the Expo dev-server host, then `localhost` |
+| `mobile/.env` | `EXPO_PUBLIC_EMAIL_RESET` | `1` shows the "email me a reset link" form on Forgot password. Leave unset until Supabase SMTP works |
 
 Never commit `.env` files. Only `.env.example` placeholders belong in the repo.
 

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PgDialect } from "drizzle-orm/pg-core";
 
-import { languageFilterFor, languagesFor, normalizeLanguagePref } from "./language.js";
+import { languageFilterFor, normalizeLanguagePref } from "./language.js";
 
 test("normalizeLanguagePref falls back to en for missing/unknown values", () => {
   assert.equal(normalizeLanguagePref(undefined), "en");
@@ -10,13 +10,6 @@ test("normalizeLanguagePref falls back to en for missing/unknown values", () => 
   assert.equal(normalizeLanguagePref("fr"), "en");
   assert.equal(normalizeLanguagePref("kn"), "kn");
   assert.equal(normalizeLanguagePref("both"), "both");
-});
-
-test("languagesFor: en/kn serve one language, both serves two", () => {
-  assert.deepEqual(languagesFor("en"), ["en"]);
-  assert.deepEqual(languagesFor("kn"), ["kn"]);
-  assert.deepEqual(languagesFor("both"), ["en", "kn"]);
-  assert.deepEqual(languagesFor(undefined), ["en"]);
 });
 
 test("languageFilterFor: no condition for both, a parameterised equality otherwise", () => {

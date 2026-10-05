@@ -73,6 +73,7 @@ test("concurrent duplicate: losing insert replays the winner instead of 500", as
       [mcq()],
       [{ id: SEC }],
       [], // no existing row yet
+      [], // daily_set_cohorts (unrestricted)
       [], // insert … on conflict do nothing → nothing inserted (lost the race)
       [{ isCorrect: true }], // re-read winner
       [{ sectionId: SEC, count: 5 }],
@@ -88,7 +89,7 @@ test("concurrent duplicate: losing insert replays the winner instead of 500", as
 
 test("new answer: inserts submission and touches the streak", async () => {
   const { res, calls } = post(
-    [[set()], [mcq()], [{ id: SEC }], [], [{ id: "row" }], [], [{ sectionId: SEC, count: 5 }], [{ n: 1 }]],
+    [[set()], [mcq()], [{ id: SEC }], [], [], [{ id: "row" }], [], [{ sectionId: SEC, count: 5 }], [{ n: 1 }]],
     { selected_option: 2 },
   );
   const r = await res;
@@ -107,6 +108,7 @@ test("flashcard outside today's sections is accepted only when it is a due revie
       [flashcard({ sectionId: OTHER_SEC })],
       [{ id: SEC }],
       [],
+      [], // daily_set_cohorts (unrestricted)
       [{ questionId: Q }], // due review state exists
       [{ id: "row" }], // insert submission
       [], // review state lookup
@@ -118,4 +120,14 @@ test("flashcard outside today's sections is accepted only when it is a due revie
     { self_eval: "good" },
   );
   assert.equal((await due.res).status, 200);
+});
+
+test("malformed, empty or invalid JSON bodies are 400, never 500, and touch no table", async () => {
+  for (const raw of ["{bad", "", "null", "[]", '{"question_id":"nope"}']) {
+    const { db, calls } = fakeDb();
+    const app = harness(submissions.routes(fakeCtx(db)), "student");
+    const res = await app.request("/", { method: "POST", headers: { "Content-Type": "application/json" }, body: raw });
+    assert.equal(res.status, 400, `body ${JSON.stringify(raw)}`);
+    assert.equal(calls.length, 0);
+  }
 });

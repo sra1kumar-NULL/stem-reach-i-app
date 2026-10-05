@@ -1,14 +1,17 @@
 import { Hono } from "hono";
-import { and, asc, eq, ilike, sql } from "drizzle-orm";
+import { z } from "zod";
+import { and, asc, eq, ilike, isNotNull, sql } from "drizzle-orm";
 import {
   ListStudentsQuery,
   ResetStudentPasswordRequest,
+  StudentSectionsResponse,
   type ApiError,
   type ListStudentsResponse,
   type ResetStudentPasswordResponse,
 } from "@stemreach/core";
 import { passwordResets, profiles, submissions } from "@stemreach/core/db/schema";
-import { badRequest, HttpError, notFound, type AppContext } from "../lib/http.js";
+import { HttpError, notFound, type AppContext } from "../lib/http.js";
+import { parseOr400, readJson } from "../lib/validate.js";
 import { requireRole } from "../lib/auth.js";
 import { generatePassword } from "../lib/password-gen.js";
 import { FailureLimiter } from "../lib/rate-limit.js";
@@ -17,8 +20,6 @@ import { assertCanManageStudent } from "../lib/student-access.js";
 /** Password resets allowed per teacher per hour. */
 export const RESET_MAX_PER_HOUR = 20;
 export const RESET_WINDOW_MS = 60 * 60 * 1000;
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Escapes LIKE wildcards so a search for "100%" is literal. */
 function escapeLike(s: string): string {
@@ -35,9 +36,7 @@ export function routes(
 
   // GET /api/students?q=&class_section= — roster with last-active day (school timezone)
   app.get("/", async (c) => {
-    const parsed = ListStudentsQuery.safeParse(c.req.query());
-    if (!parsed.success) throw badRequest(parsed.error.issues[0]?.message ?? "invalid query");
-    const { q, class_section } = parsed.data;
+    const { q, class_section } = parseOr400(ListStudentsQuery, c.req.query());
 
     const rows = await ctx.db
       .select({
@@ -69,24 +68,28 @@ export function routes(
     return c.json(body);
   });
 
+  // GET /api/students/sections — distinct class_section values for the cohort picker
+  app.get("/sections", async (c) => {
+    const rows = await ctx.db
+      .selectDistinct({ classSection: profiles.classSection })
+      .from(profiles)
+      .where(and(eq(profiles.role, "student"), isNotNull(profiles.classSection)))
+      .orderBy(asc(profiles.classSection));
+    const body: StudentSectionsResponse = { sections: rows.map((r) => r.classSection as string) };
+    return c.json(body);
+  });
+
   // POST /api/students/:id/reset-password — teacher sets a temporary password
   app.post("/:id/reset-password", async (c) => {
     const teacher = c.var.user;
     const id = c.req.param("id");
 
-    const raw = await c.req.text();
-    let json: unknown = {};
-    if (raw.trim() !== "") {
-      try {
-        json = JSON.parse(raw);
-      } catch {
-        throw badRequest("body must be valid JSON");
-      }
-    }
-    const parsed = ResetStudentPasswordRequest.safeParse(json);
-    if (!parsed.success) throw badRequest(parsed.error.issues[0]?.message ?? "invalid reset payload");
+    // An empty body is allowed (the API generates the password); a present body must be valid JSON.
+    const hasBody = (await c.req.text()).trim() !== "";
+    const json = hasBody ? await readJson(c) : {};
+    const reset = parseOr400(ResetStudentPasswordRequest, json);
 
-    if (!UUID.test(id)) throw notFound("student not found");
+    if (!z.string().uuid().safeParse(id).success) throw notFound("student not found");
     const [target] = await ctx.db.select({ id: profiles.id, role: profiles.role }).from(profiles).where(eq(profiles.id, id)).limit(1);
     assertCanManageStudent(teacher.profile, target);
 
@@ -99,7 +102,7 @@ export function routes(
     }
     limiter.recordFailure(teacher.id);
 
-    const password = parsed.data.temporary_password ?? generatePassword();
+    const password = reset.temporary_password ?? generatePassword();
     // Admin API: only the service role can set another user's password. Errors are
     // replaced with fixed copy so the password can never leak through a message.
     const { error } = await ctx.serviceRole.auth.admin.updateUserById(target.id, {

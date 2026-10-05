@@ -1,17 +1,16 @@
 import { Redirect, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, BackHandler, Pressable, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Pressable } from 'react-native';
 
 import { changePassword } from '@/api/students';
-import { AuthShell } from '@/components/auth-shell';
+import { AuthField, AuthShell } from '@/components/auth-shell';
+import { LoadingScreen } from '@/components/ui/loading-screen';
 import { ConfirmSheet } from '@/components/confirm-sheet';
 import { useToast } from '@/components/toast';
 import { Button, ButtonText } from '@/components/ui/button';
-import { Input, InputField } from '@/components/ui/input';
 import { Text } from '@/components/ui/text';
 import { Fonts, Nord } from '@/constants/theme';
 import { useConfirmSignOut } from '@/hooks/use-confirm-sign-out';
-import { useTheme } from '@/hooks/use-theme';
 import { validateNewPassword } from '@/lib/auth-links';
 import { toFriendlyError } from '@/lib/friendly-error';
 import { supabase, useAuth } from '@/state/auth';
@@ -23,8 +22,7 @@ import { supabase, useAuth } from '@/state/auth';
  * "Sign out" leaves. After saving, the Supabase session is refreshed so the flag clears.
  */
 export default function ChangePasswordScreen() {
-  const { session, loading } = useAuth();
-  const theme = useTheme();
+  const { session, loading, mustChangePassword, markPasswordChanged } = useAuth();
   const router = useRouter();
   const { showToast } = useToast();
   const { confirmOut, signingOut, openConfirm, closeConfirm, confirmSignOut } = useConfirmSignOut();
@@ -40,15 +38,11 @@ export default function ChangePasswordScreen() {
   }, []);
 
   if (loading) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <LoadingScreen label="Verifying, please wait" />;
   }
   if (!session) return <Redirect href="/login" />;
   // Flag already cleared (e.g. page reloaded after saving): nothing to force.
-  if (session.user.app_metadata?.must_change_password !== true && !busy) return <Redirect href="/" />;
+  if (!mustChangePassword && !busy) return <Redirect href="/" />;
 
   const submit = async () => {
     if (busy) return;
@@ -70,6 +64,7 @@ export default function ChangePasswordScreen() {
         const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
         if (signInError) throw new Error('refresh failed');
       }
+      markPasswordChanged();
       showToast('Password updated. Welcome back!', 'success');
       router.replace('/');
     } catch (e) {
@@ -84,36 +79,29 @@ export default function ChangePasswordScreen() {
       icon="key"
       subtitle="Your teacher reset your password. Choose a new one that only you know (at least 8 characters)."
     >
-      <Input className="border border-border rounded-xl bg-background">
-        <InputField
-          value={password}
-          onChangeText={setPassword}
-          placeholder="new password"
-          accessibilityLabel="New password"
-          autoComplete="new-password"
-          textContentType="newPassword"
-          placeholderTextColor={theme.textSecondary}
-          secureTextEntry
-          className="px-4 py-3 text-base"
-          style={{ color: theme.text, fontFamily: Fonts.sans }}
-        />
-      </Input>
-      <Input className="border border-border rounded-xl bg-background">
-        <InputField
-          value={confirm}
-          onChangeText={setConfirm}
-          placeholder="confirm new password"
-          accessibilityLabel="Confirm new password"
-          autoComplete="new-password"
-          textContentType="newPassword"
-          placeholderTextColor={theme.textSecondary}
-          secureTextEntry
-          returnKeyType="go"
-          onSubmitEditing={() => void submit()}
-          className="px-4 py-3 text-base"
-          style={{ color: theme.text, fontFamily: Fonts.sans }}
-        />
-      </Input>
+      <AuthField
+        label="New password"
+        hint="At least 8 characters"
+        password
+        value={password}
+        onChangeText={setPassword}
+        placeholder="new password"
+        autoComplete="new-password"
+        textContentType="newPassword"
+        returnKeyType="next"
+      />
+      <AuthField
+        label="Type it again"
+        password
+        value={confirm}
+        onChangeText={setConfirm}
+        placeholder="confirm new password"
+        accessibilityLabel="Confirm new password"
+        autoComplete="new-password"
+        textContentType="newPassword"
+        returnKeyType="go"
+        onSubmitEditing={() => void submit()}
+      />
 
       {error && (
         <Text accessibilityRole="alert" className="text-center text-danger-text text-sm" style={{ fontFamily: Fonts.sans }}>

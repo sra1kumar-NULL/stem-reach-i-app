@@ -3,7 +3,8 @@ import { router, type Href } from 'expo-router';
 import { Pressable, StyleSheet } from 'react-native';
 
 import { Text as UIText } from '@/components/ui/text';
-import { Accents, Type } from '@/constants/theme';
+import { Type } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 
 interface Props {
   /** Where to go when there is no history to pop (cold deep link, web refresh). */
@@ -19,6 +20,7 @@ interface Props {
  * walks through stale duplicates — and replaces to `fallback` otherwise.
  */
 export function BackButton({ fallback, label = 'Back', iconOnly = false }: Props) {
+  const theme = useTheme();
   const goBack = () => {
     if (router.canGoBack()) router.back();
     else router.replace(fallback);
@@ -31,7 +33,7 @@ export function BackButton({ fallback, label = 'Back', iconOnly = false }: Props
       accessibilityRole="button"
       accessibilityLabel={label}
     >
-      <Ionicons name="chevron-back" size={22} color={Accents.primary} />
+      <Ionicons name="chevron-back" size={22} color={theme.primaryText} accessible={false} />
       {iconOnly ? null : (
         <UIText className="text-primary-text text-xl" style={Type.bodyBold}>
           {label}

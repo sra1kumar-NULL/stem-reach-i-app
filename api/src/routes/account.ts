@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { ChangePasswordRequest, type OkResponse } from "@stemreach/core";
 import { badRequest, HttpError, type AppContext } from "../lib/http.js";
+import { parseBody } from "../lib/validate.js";
 
 /** Account-level routes mounted at /api/me next to routes/me.ts. */
 export function routes(ctx: AppContext): Hono {
@@ -10,11 +11,10 @@ export function routes(ctx: AppContext): Hono {
   // and clears the teacher-reset flag. Allowed while password_change_required.
   app.post("/change-password", async (c) => {
     const user = c.var.user;
-    const parsed = ChangePasswordRequest.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) throw badRequest(parsed.error.issues[0]?.message ?? "invalid password payload");
+    const body = await parseBody(c, ChangePasswordRequest);
 
     const { error } = await ctx.serviceRole.auth.admin.updateUserById(user.id, {
-      password: parsed.data.new_password,
+      password: body.new_password,
       app_metadata: { must_change_password: false },
     });
     if (error) {
@@ -24,8 +24,8 @@ export function routes(ctx: AppContext): Hono {
       throw new HttpError(502, "change_password_failed", "Could not change the password. Try again.");
     }
 
-    const body: OkResponse = { ok: true };
-    return c.json(body, 200, { "Cache-Control": "no-store" });
+    const out: OkResponse = { ok: true };
+    return c.json(out, 200, { "Cache-Control": "no-store" });
   });
 
   return app;

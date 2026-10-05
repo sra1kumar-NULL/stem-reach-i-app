@@ -19,11 +19,13 @@ import { Text as UIText } from '@/components/ui/text';
 import { Accents, Fonts, onAccent, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { toFriendlyError } from '@/lib/friendly-error';
+import { syllabusStore } from '@/lib/syllabus-store';
 import { csvTemplate, IMPORT_MAX_ROWS, parseImport, type ImportProblem } from '@/lib/question-import';
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const MAX_TABLE_ROWS = 100;
-const PLACEHOLDER = `Paste JSON, CSV or TSV here (up to ${IMPORT_MAX_ROWS} questions).\n\nCSV header:\ntype,difficulty,language,text,option1,option2,option3,option4,correct,answer,explanation,chapter_no,section_no`;
+const PLACEHOLDER = 'Paste your questions here, or choose a file';
+const ROW_TOPIC_LABEL = 'Use the topic in each row';
 
 /** Web: download via Blob. Native: hand the text to the system share sheet. */
 async function saveText(filename: string, mime: string, text: string): Promise<'downloaded' | 'shared'> {
@@ -80,7 +82,7 @@ export default function ImportScreen() {
   const loadSyllabus = useCallback(async () => {
     setSyllabusError(null);
     try {
-      setSyllabus(await getSyllabus());
+      setSyllabus(await syllabusStore.get(getSyllabus));
     } catch (e) {
       setSyllabusError(toFriendlyError(e, 'Could not load chapters and topics.'));
     }
@@ -89,6 +91,11 @@ export default function ImportScreen() {
   useEffect(() => {
     void loadSyllabus();
   }, [loadSyllabus]);
+
+  // With a single chapter there is nothing to choose: preselect it for export.
+  useEffect(() => {
+    if (syllabus?.chapters.length === 1) setExportChapterId((cur) => cur ?? syllabus.chapters[0].id);
+  }, [syllabus]);
 
   const targetLabel = useMemo(() => {
     for (const ch of syllabus?.chapters ?? []) {
@@ -233,16 +240,16 @@ export default function ImportScreen() {
               <Pressable
                 onPress={() => setPickerOpen(true)}
                 accessibilityRole="button"
-                accessibilityLabel={`Default topic: ${targetLabel ?? 'none'}. Change`}
+                accessibilityLabel={`Default topic: ${targetLabel ?? ROW_TOPIC_LABEL}. Change`}
                 style={[styles.select, { borderColor: Accents.border }]}
               >
                 <UIText className="flex-1 text-foreground" style={Type.body} numberOfLines={2}>
-                  {targetLabel ?? 'None: rows carry chapter_no and section_no'}
+                  {targetLabel ?? ROW_TOPIC_LABEL}
                 </UIText>
                 <Ionicons name="chevron-down" size={18} color={theme.textSecondary} />
               </Pressable>
               <UIText className="text-xs text-muted-foreground" style={Type.body}>
-                Used for rows without chapter_no and section_no.
+                Rows that name their own topic keep it. Other rows go to the topic you pick here.
               </UIText>
             </View>
 
@@ -264,6 +271,10 @@ export default function ImportScreen() {
                 style={{ color: theme.text, fontFamily: Fonts.mono, minHeight: 180, height: 'auto' }}
               />
             </Input>
+
+            <UIText className="text-xs text-muted-foreground" style={Type.body}>
+              Accepts JSON, CSV or TSV, up to {IMPORT_MAX_ROWS} questions. The CSV template shows the columns. Nothing is saved until you import.
+            </UIText>
 
             <View style={styles.row}>
               {Platform.OS === 'web' ? (
@@ -297,10 +308,12 @@ export default function ImportScreen() {
               className={`rounded-2xl ${busy || !text.trim() ? 'opacity-50' : ''}`}
               disabled={busy || !text.trim() || phase === 'done'}
               onPress={() => void check()}
+              accessibilityLabel={phase === 'checking' ? 'Checking' : 'Check file'}
+              accessibilityHint="Checks every row without saving anything"
               accessibilityState={{ busy, disabled: busy || !text.trim() }}
             >
               {phase === 'checking' ? <ActivityIndicator color={onAccent(Accents.primary)} /> : null}
-              <ButtonText style={Type.bodyBold}>{phase === 'checking' ? 'Checking…' : 'Check'}</ButtonText>
+              <ButtonText style={Type.bodyBold}>{phase === 'checking' ? 'Checking…' : 'Check file'}</ButtonText>
             </Button>
 
             {localError ? (
@@ -317,7 +330,7 @@ export default function ImportScreen() {
             {problems.length > 0 ? (
               <View style={{ gap: 6 }}>
                 <UIText accessibilityRole="alert" className="font-bold text-danger-text" style={Type.bodyBold}>
-                  {new Set(problems.map((p) => p.row)).size} of {rowCount} rows need fixing before you can check them.
+                  {new Set(problems.map((p) => p.row)).size} of {rowCount} rows need fixing before they can be checked.
                 </UIText>
                 <ProblemTable rows={problems.map((p) => ({ n: p.row, text: p.message }))} />
               </View>
@@ -375,7 +388,7 @@ export default function ImportScreen() {
                     </Button>
                     {result.invalid > 0 ? (
                       <UIText className="text-sm text-muted-foreground" style={Type.body}>
-                        Fix the rows above and press Check again. Nothing is imported until every row is valid.
+                        Fix the rows above and press Check file again. Nothing is imported until every row is valid.
                       </UIText>
                     ) : null}
                   </>
@@ -455,7 +468,7 @@ export default function ImportScreen() {
 
       <FormSheet visible={pickerOpen} title="Default topic" onClose={() => setPickerOpen(false)}>
         <TopicOption
-          label="None: rows carry chapter_no and section_no"
+          label={ROW_TOPIC_LABEL}
           checked={target === null}
           onPress={() => {
             setTarget(null);

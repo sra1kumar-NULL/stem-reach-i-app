@@ -1,5 +1,3 @@
-import { useFonts as useFredoka, Fredoka_500Medium, Fredoka_600SemiBold, Fredoka_700Bold } from '@expo-google-fonts/fredoka';
-import { useFonts as useNunito, Nunito_400Regular, Nunito_600SemiBold, Nunito_700Bold } from '@expo-google-fonts/nunito';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import Head from 'expo-router/head';
 import { Platform } from 'react-native';
@@ -8,6 +6,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaListener } from 'react-native-safe-area-context';
 import { Uniwind } from 'uniwind';
 
+import { useAppFonts } from '@/hooks/use-app-fonts';
 import { AuthProvider } from '@/state/auth';
 import { ThemeProvider as AppThemeProvider, useThemePreference } from '@/state/theme';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -15,18 +14,9 @@ import { ToastProvider } from '@/components/toast';
 import { GluestackUIProvider } from '@/components/ui/gluestack-ui-provider';
 
 export default function RootLayout() {
-  const [fredokaLoaded] = useFredoka({
-    Fredoka_500Medium,
-    Fredoka_600SemiBold,
-    Fredoka_700Bold,
-  });
-  const [nunitoLoaded] = useNunito({
-    Nunito_400Regular,
-    Nunito_600SemiBold,
-    Nunito_700Bold,
-  });
+  const fontsLoaded = useAppFonts();
 
-  if (!fredokaLoaded || !nunitoLoaded) {
+  if (!fontsLoaded) {
     return null; // keep the native splash screen until fonts are ready
   }
 
@@ -63,6 +53,9 @@ function AppShell() {
           // (`+html.tsx` is ignored with web.output = "single", so the tags are injected here.)
           <Head>
             <link rel="manifest" href="/manifest.json" />
+            <link rel="preload" href="/fonts/Nunito_400Regular.ttf" as="font" type="font/ttf" crossOrigin="anonymous" />
+            <link rel="preload" href="/fonts/Fredoka_600SemiBold.ttf" as="font" type="font/ttf" crossOrigin="anonymous" />
+            <link rel="stylesheet" href="/fonts/fonts.css" />
             <link rel="apple-touch-icon" href="/icon-192.png" />
             <meta name="apple-mobile-web-app-capable" content="yes" />
             <meta name="apple-mobile-web-app-title" content="Daily Revision" />

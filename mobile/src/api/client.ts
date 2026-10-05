@@ -58,6 +58,62 @@ export class ApiError extends Error {
   }
 }
 
+/** Longest a single request may take before the UI gets a `timeout` error (Render free tier cold-starts are slow). */
+export const REQUEST_TIMEOUT_MS = 20_000;
+
+/** Callbacks the auth layer registers so `apiFetch` can react to 401 / 403 without importing it (no cycle). */
+export interface AuthHooks {
+  /** Refreshes the Supabase session; resolves the new access token, or null when it cannot be refreshed. */
+  refreshSession: () => Promise<string | null>;
+  /** The session is unusable: sign out and show the login screen with a notice. */
+  onSessionExpired: () => void;
+  /** The API refuses everything until the user picks a new password. */
+  onPasswordChangeRequired: () => void;
+}
+let authHooks: Partial<AuthHooks> = {};
+export function registerAuthHooks(hooks: Partial<AuthHooks>): () => void {
+  authHooks = hooks;
+  return () => {
+    if (authHooks === hooks) authHooks = {};
+  };
+}
+
+let refreshing: Promise<string | null> | null = null;
+/** One refresh at a time: parallel 401s share it instead of burning the refresh token twice. */
+function refreshOnce(): Promise<string | null> {
+  if (!authHooks.refreshSession) return Promise.resolve(null);
+  refreshing ??= authHooks.refreshSession().catch(() => null).finally(() => {
+    refreshing = null;
+  });
+  return refreshing;
+}
+
+async function request<T>(path: string, init: { method?: string; body?: unknown } | undefined, token: string | null): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${getApiBaseUrl()}${path}`, {
+      method: init?.method ?? 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as { error?: { code?: string; message?: string } } | null;
+      throw new ApiError(res.status, body?.error?.code ?? 'http_error', body?.error?.message ?? `HTTP ${res.status}`);
+    }
+    return (await res.json()) as T;
+  } catch (e) {
+    if (controller.signal.aborted) throw new ApiError(0, 'timeout', 'The server is waking up - try again.');
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function apiFetch<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
   // Race gate: a fetch issued before the session restore settles would go out
   // without an Authorization header and get a 401. Wait (bounded) for auth to
@@ -66,19 +122,30 @@ export async function apiFetch<T>(path: string, init?: { method?: string; body?:
   if (!accessToken && !authInitialized) {
     await Promise.race([authInitialization, wait(AUTH_INIT_CAP_MS)]);
   }
-  const res = await fetch(`${getApiBaseUrl()}${path}`, {
-    method: init?.method ?? 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-    },
-    body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
-  });
-  if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { error?: { code?: string; message?: string } } | null;
-    throw new ApiError(res.status, body?.error?.code ?? 'http_error', body?.error?.message ?? `HTTP ${res.status}`);
+  const sent = accessToken;
+  try {
+    return await request<T>(path, init, sent);
+  } catch (e) {
+    if (!(e instanceof ApiError)) throw e;
+    if (e.status === 401 && sent) {
+      // Expired access token: try one refresh, replay once, then give up and sign out.
+      // (Skip the replay if another request already swapped the token.)
+      const fresh = accessToken && accessToken !== sent ? accessToken : await refreshOnce();
+      if (fresh) {
+        setAccessToken(fresh);
+        try {
+          return await request<T>(path, init, fresh);
+        } catch (e2) {
+          if (e2 instanceof ApiError && e2.status === 401) authHooks.onSessionExpired?.();
+          throw e2;
+        }
+      }
+      authHooks.onSessionExpired?.();
+    } else if (e.status === 403 && e.code === 'password_change_required') {
+      authHooks.onPasswordChangeRequired?.();
+    }
+    throw e;
   }
-  return res.json() as Promise<T>;
 }
 
 export async function checkApiHealth(baseUrl = getApiBaseUrl()): Promise<boolean> {
@@ -111,7 +178,7 @@ export const signup = (body: {
 }) =>
   apiFetch<SignupResponse>('/api/auth/signup', { method: 'POST', body });
 export const getActivations = (date?: string) => apiFetch<ActivationResponse>(`/api/activations${date ? `?date=${date}` : ''}`);
-export const activate = (body: { date?: string; section_ids: string[] }) =>
+export const activate = (body: { date?: string; section_ids: string[]; target_cohorts?: string[] }) =>
   apiFetch<ActivationResponse>('/api/activations', { method: 'POST', body });
 /** `date` omitted → the server's school-calendar today (APP_TIMEZONE), not the device's UTC day. */
 export const getParticipation = (date?: string, classSection?: string) =>

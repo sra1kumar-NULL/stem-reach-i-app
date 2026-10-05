@@ -4,7 +4,6 @@ import { type Href, router, useFocusEffect, useLocalSearchParams } from 'expo-ro
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
-  ActivityIndicator,
   Animated,
   Easing,
   FlatList,
@@ -26,11 +25,14 @@ import { ErrorState } from '@/components/error-state';
 import { hapticLight } from '@/components/haptics';
 import { QuestionCard } from '@/components/question-card';
 import { SwipeHint } from '@/components/swipe-hint';
+import { useToast } from '@/components/toast';
 import { Box } from '@/components/ui/box';
 import { Button, ButtonText } from '@/components/ui/button';
 import { Heading } from '@/components/ui/heading';
+import { LoadingScreen } from '@/components/ui/loading-screen';
 import { Text as UIText } from '@/components/ui/text';
 import { Accents, onAccent, Type } from '@/constants/theme';
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { useTheme } from '@/hooks/use-theme';
 import { markCoachSeen, recordSwipe, shouldShowCoach, shouldShowSwipeCue } from '@/lib/coach-storage';
 import {
@@ -41,6 +43,7 @@ import {
   isAnswered,
   markAnswered,
   nextIndex,
+  positionLabel,
   remainingCount,
   skipCard,
   skippedRemaining,
@@ -70,6 +73,10 @@ export default function FeedScreen() {
   const itemHeight = Math.max(measured - peek, 240);
   const compactHeader = windowWidth < 360;
   const theme = useTheme();
+  const { showToast } = useToast();
+  const reduceMotion = useReducedMotion();
+  const reduceRef = useRef(reduceMotion);
+  reduceRef.current = reduceMotion;
   const listRef = useRef<FlatList<string>>(null);
   const [feed, setFeed] = useState<FeedResponse | null>(null);
   const [queue, setQueue] = useState<FeedQueue>(() => createQueue([]));
@@ -84,6 +91,9 @@ export default function FeedScreen() {
   const [hint, setHint] = useState<string | null>(null);
   const [coachOpen, setCoachOpen] = useState(false);
   const [cueOn, setCueOn] = useState(false);
+  /** Header-counter position of each card answered this session (so its label keeps its own number). */
+  const [ordinals, setOrdinals] = useState<Record<string, number>>({});
+  const attemptedRef = useRef(0);
   const barWidth = useRef(new Animated.Value(0)).current;
   const shake = useRef(new Animated.Value(0)).current;
 
@@ -102,12 +112,6 @@ export default function FeedScreen() {
     feed?.questions.forEach((q) => m.set(q.id, q));
     return m;
   }, [feed]);
-  const numberById = useMemo(() => {
-    const m = new Map<string, number>();
-    feed?.questions.forEach((q, i) => m.set(q.id, i + 1));
-    return m;
-  }, [feed]);
-
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
@@ -115,6 +119,9 @@ export default function FeedScreen() {
       .then(([f, me]) => {
         setFeed(f);
         setQueue(createQueue(f.questions.map((q) => q.id)));
+        setStats({ correct: 0, attempted: 0 });
+        setOrdinals({});
+        attemptedRef.current = 0;
         setCurrent(0);
         currentRef.current = 0;
         setStreak(me.streak.current);
@@ -134,6 +141,10 @@ export default function FeedScreen() {
   useEffect(load, [load]);
 
   useEffect(() => {
+    if (reduceRef.current) {
+      barWidth.setValue(progressPct * 100);
+      return;
+    }
     Animated.timing(barWidth, {
       toValue: progressPct * 100,
       duration: 500,
@@ -178,10 +189,17 @@ export default function FeedScreen() {
     [feed],
   );
 
-  const handleAnswered = useCallback((id: string, isCorrect: boolean) => {
-    setStats((s) => ({ correct: s.correct + (isCorrect ? 1 : 0), attempted: s.attempted + 1 }));
-    setQueue((q) => markAnswered(q, id));
-  }, []);
+  const baseAnswered = feed?.progress.answered ?? 0;
+  const handleAnswered = useCallback(
+    (id: string, isCorrect: boolean) => {
+      attemptedRef.current += 1;
+      const ordinal = baseAnswered + attemptedRef.current;
+      setOrdinals((o) => ({ ...o, [id]: ordinal }));
+      setStats((s) => ({ correct: s.correct + (isCorrect ? 1 : 0), attempted: s.attempted + 1 }));
+      setQueue((q) => markAnswered(q, id));
+    },
+    [baseAnswered],
+  );
 
   /** Programmatic scroll (Next button, auto-advance, keyboard): not counted as a swipe. */
   const goTo = useCallback((index: number) => {
@@ -210,8 +228,10 @@ export default function FeedScreen() {
     if (!canSkip(queueRef.current, id)) return;
     hapticLight();
     setQueue((q) => skipCard(q, id));
+    // showToast also announces for screen readers; the explicit announce covers the case it is muted.
+    showToast('Skipped - it comes back at the end', 'info');
     AccessibilityInfo.announceForAccessibility('Skipped. It will come back at the end.');
-  }, []);
+  }, [showToast]);
 
   const currentId = queue.order[current];
   const locked = currentId != null && !isAnswered(queue, currentId);
@@ -227,7 +247,7 @@ export default function FeedScreen() {
     if (now - lastBlockRef.current < 900) return;
     lastBlockRef.current = now;
     hapticLight();
-    Animated.sequence([
+    if (!reduceRef.current) Animated.sequence([
       Animated.timing(shake, { toValue: -8, duration: 45, useNativeDriver: true }),
       Animated.timing(shake, { toValue: 8, duration: 70, useNativeDriver: true }),
       Animated.timing(shake, { toValue: -5, duration: 60, useNativeDriver: true }),
@@ -310,8 +330,11 @@ export default function FeedScreen() {
   // complete on load renders the "Done for today" state below instead —
   // redirecting there made summary's "Back to home" (→ / → feed → summary)
   // loop forever, and showed a fabricated "0/N · 0%" score on reopen.
+  const redirectedRef = useRef(false);
   useEffect(() => {
     if (!done) return;
+    if (redirectedRef.current) return;
+    redirectedRef.current = true;
     router.replace({
       pathname: '/(student)/summary',
       params: { correct: String(stats.correct), attempted: String(stats.attempted) },
@@ -320,11 +343,7 @@ export default function FeedScreen() {
   }, [done]);
 
   if (loading) {
-    return (
-      <Box className="flex-1 items-center justify-center bg-background">
-        <ActivityIndicator size="large" color={Accents.primary} />
-      </Box>
-    );
+    return <LoadingScreen label="Loading today's questions" />;
   }
 
   const openProfile = () => router.push('/profile' as Href);
@@ -338,11 +357,11 @@ export default function FeedScreen() {
         onPress={openStudy}
         style={({ pressed }) => [styles.pill, pressed && { opacity: 0.6 }]}
         accessibilityRole="button"
-        accessibilityLabel="Self study"
+        accessibilityLabel="My decks"
       >
         <Ionicons name="library-outline" size={14} color={theme.textSecondary} />
         <UIText className="text-muted-foreground font-semibold" style={Type.bodySemi}>
-          Study
+          My decks
         </UIText>
       </Pressable>
       <Pressable
@@ -357,6 +376,20 @@ export default function FeedScreen() {
         </UIText>
       </Pressable>
     </View>
+  );
+
+  /** Secondary action on the Done / empty states: a text link, not a second button. */
+  const refreshLink = (
+    <Pressable
+      onPress={load}
+      style={({ pressed }) => [styles.textLink, pressed && { opacity: 0.6 }]}
+      accessibilityRole="button"
+      accessibilityLabel="Refresh"
+    >
+      <UIText className="text-primary-text" style={[Type.bodyBold, styles.textLinkLabel]}>
+        Refresh
+      </UIText>
+    </Pressable>
   );
 
   if (error) {
@@ -374,26 +407,18 @@ export default function FeedScreen() {
           🎊
         </Text>
         <Heading accessibilityRole="header" className="text-center text-2xl" style={Type.heading}>
-          Done for today!
+          {"You’re done for today!"}
         </Heading>
         <UIText className="text-muted-foreground text-center" style={Type.body}>
           You finished today&apos;s revision. Come back tomorrow for a fresh set, or review your own decks now.
         </UIText>
         <UIText className="text-muted-foreground" style={Type.bodySemi}>
-          Current streak: {streak} 🔥
+          {streak >= 1 ? `Current streak: ${streak} 🔥` : '0 day streak — come back tomorrow!'}
         </UIText>
-        <Button
-          variant="default"
-          className="min-h-11 rounded-xl"
-          onPress={() => router.push('/(self-study)')}
-          accessibilityRole="button"
-        >
+        <Button variant="default" className="min-h-11 rounded-xl" onPress={openStudy} accessibilityRole="button" accessibilityLabel="Review my decks">
           <ButtonText style={Type.bodyBold}>Review my decks</ButtonText>
         </Button>
-        <Button variant="outline" className="min-h-11 rounded-xl" onPress={load} accessibilityRole="button">
-          <ButtonText style={Type.bodyBold}>Refresh</ButtonText>
-        </Button>
-        {escapeHatches}
+        {refreshLink}
       </Box>
     );
   }
@@ -401,20 +426,22 @@ export default function FeedScreen() {
   if (!feed || feed.empty) {
     return (
       <Box className="flex-1 items-center justify-center p-8 gap-4 bg-background">
-        <Text style={{ fontSize: 56 }}>📭</Text>
-        <Heading className="text-center text-2xl" style={Type.heading}>
+        <Text style={{ fontSize: 56 }} accessible={false}>
+          📭
+        </Text>
+        <Heading accessibilityRole="header" className="text-center text-2xl" style={Type.heading}>
           No revision yet today
         </Heading>
         <UIText className="text-muted-foreground text-center" style={Type.body}>
           Your teacher hasn&apos;t activated today&apos;s topics yet. Check back later!
         </UIText>
         <UIText className="text-muted-foreground" style={Type.bodySemi}>
-          Current streak: {streak} 🔥
+          {streak >= 1 ? `Current streak: ${streak} 🔥` : '0 day streak — start your streak today!'}
         </UIText>
-        <Button variant="default" className="rounded-xl" onPress={load}>
-          <ButtonText style={Type.bodyBold}>Refresh</ButtonText>
+        <Button variant="default" className="min-h-11 rounded-xl" onPress={openStudy} accessibilityRole="button" accessibilityLabel="Review my decks">
+          <ButtonText style={Type.bodyBold}>Review my decks</ButtonText>
         </Button>
-        {escapeHatches}
+        {refreshLink}
       </Box>
     );
   }
@@ -424,6 +451,7 @@ export default function FeedScreen() {
     allRemainingSkipped(queue) && skippedRemaining(queue) > 0
       ? `${skippedRemaining(queue)} skipped - answer them to finish`
       : undefined;
+  // SWIPE_CUE_COPY is platform-specific: "Swipe up" on phones, the keyboard cue only on web.
   const showCue = cueOn && !locked && !coachOpen && current < queue.order.length - 1 && remainingCount(queue) > 0;
 
   return (
@@ -444,9 +472,9 @@ export default function FeedScreen() {
             <View
               style={styles.progressLabel}
               accessible
-              accessibilityLabel={`Streak: ${streak} ${streak === 1 ? 'day' : 'days'} in a row`}
+              accessibilityLabel={streak >= 1 ? `Streak: ${streak} ${streak === 1 ? 'day' : 'days'} in a row` : '0 day streak'}
             >
-              <Ionicons name="flame" size={14} color={Accents.warn} />
+              <Ionicons name="flame" size={14} color={streak >= 1 ? Accents.warn : Accents.border} />
               <UIText className="text-sm font-bold text-foreground" style={Type.bodyBold} numberOfLines={1}>
                 {streak}
               </UIText>
@@ -460,12 +488,12 @@ export default function FeedScreen() {
           onPress={openStudy}
           style={({ pressed }) => [compactHeader ? styles.studyIcon : styles.pill, pressed && { opacity: 0.6 }]}
           accessibilityRole="button"
-          accessibilityLabel="Self study"
+          accessibilityLabel="My decks"
         >
           <Ionicons name="library-outline" size={compactHeader ? 20 : 14} color={theme.textSecondary} />
           {!compactHeader && (
             <UIText className="text-muted-foreground font-semibold" style={Type.bodySemi}>
-              Study
+              My decks
             </UIText>
           )}
         </Pressable>
@@ -490,7 +518,7 @@ export default function FeedScreen() {
         <FlatList
           ref={listRef}
           data={queue.order as string[]}
-          extraData={{ current, queue, skippedNote, itemHeight }}
+          extraData={{ current, queue, skippedNote, itemHeight, ordinals, shownAnswered }}
           keyExtractor={(id) => id}
           scrollEnabled={!locked}
           renderItem={({ item: id, index }) => {
@@ -508,8 +536,9 @@ export default function FeedScreen() {
                 <QuestionCard
                   question={question}
                   sectionLabel={sectionLabel(question.section_id)}
-                  questionNo={numberById.get(id) ?? index + 1}
-                  total={feed.questions.length}
+                  questionNo={ordinals[id] ?? shownAnswered + 1}
+                  total={feed.progress.total}
+                  positionLabel={positionLabel(ordinals[id] ?? shownAnswered + 1, feed.progress.total)}
                   isLast={remainingCount(queue) === 0}
                   onSubmit={handleSubmit}
                   onAnswered={(ok) => handleAnswered(id, ok)}
@@ -595,6 +624,8 @@ const styles = StyleSheet.create({
   hintWrap: { position: 'absolute', top: 8, left: 16, right: 16, alignItems: 'center', zIndex: 6 },
   hint: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10 },
   hintText: { fontSize: 14 },
+  textLink: { minHeight: 44, minWidth: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
+  textLinkLabel: { textDecorationLine: 'underline' },
   emptyActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: 10 },
   pill: {
     minHeight: 44,

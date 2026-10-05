@@ -1,14 +1,14 @@
 {
   "expo": {
-    "name": "Daily Revision",
-    "slug": "mobile",
+    "name": "DailyRevise",
+    "slug": "dailyrevise",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "mobile",
+    "scheme": "dailyrevise",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/images/icon.png"
     },
     "android": {
       "adaptiveIcon": {
@@ -18,13 +18,19 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.mobile"
+      "package": "com.dailyrevise.app",
+      "allowBackup": false,
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "output": "single",
       "favicon": "./assets/images/favicon.png",
-      "name": "Daily Revision",
-      "shortName": "Revision",
+      "name": "DailyRevise",
+      "shortName": "DailyRevise",
       "description": "Bite-sized daily revision for students and teachers.",
       "themeColor": "#4C6A92",
       "backgroundColor": "#ECEFF4",
@@ -35,7 +41,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#5E81AC",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }

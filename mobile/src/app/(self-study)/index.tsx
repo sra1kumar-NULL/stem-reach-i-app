@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackButton } from '@/components/back-button';
+import { ErrorState } from '@/components/error-state';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { useToast } from '@/components/toast';
 import { Box } from '@/components/ui/box';
@@ -23,8 +24,10 @@ import { Heading } from '@/components/ui/heading';
 import { Input, InputField } from '@/components/ui/input';
 import { Text as UIText } from '@/components/ui/text';
 import { Accents, Fonts, Nord, onAccent, Type } from '@/constants/theme';
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { useTheme } from '@/hooks/use-theme';
 import { useSelfStudyOwner } from '@/hooks/use-self-study-owner';
+import { toFriendlyError } from '@/lib/friendly-error';
 import { getSelfStudyDb, newLocalId, type LocalDeck } from '@/lib/self-study-db';
 import { SQL } from '@/lib/self-study-owner';
 import { localDateString } from '@/lib/sm2';
@@ -47,6 +50,7 @@ interface DeckRow extends LocalDeck {
  */
 export default function SelfStudyScreen() {
   const theme = useTheme();
+  const reduceMotion = useReducedMotion();
   const { showToast } = useToast();
   const ownerId = useSelfStudyOwner();
   const [decks, setDecks] = useState<DeckRow[]>([]);
@@ -78,7 +82,7 @@ export default function SelfStudyScreen() {
           })),
         );
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'failed to load decks');
+        setError(toFriendlyError(e, "Couldn't load your decks. Try again."));
       } finally {
         setLoading(false);
       }
@@ -112,8 +116,7 @@ export default function SelfStudyScreen() {
     } catch (e) {
       // In-modal: the toast mounts in the root window, behind this Modal's
       // own Android window, so a toast-only failure is invisible to the user.
-      setCreateError(e instanceof Error ? e.message : 'failed to create deck');
-      showToast(e instanceof Error ? e.message : 'failed to create deck', 'error');
+      setCreateError(toFriendlyError(e, "Couldn't create the deck. Try again."));
     } finally {
       setSaving(false);
     }
@@ -126,18 +129,21 @@ export default function SelfStudyScreen() {
           {/* Reached from the student feed or login ("Study offline"); a cold deep link falls back to the auth gate. */}
           <BackButton fallback="/" iconOnly />
           <Heading accessibilityRole="header" className="flex-1 text-2xl" style={Type.heading}>
-            Self Study
+            My decks
           </Heading>
           <View style={styles.headerActions}>
-            <Button
-              variant="outline"
-              className="min-h-11 rounded-xl px-3.5"
-              onPress={openCreate}
-              accessibilityRole="button"
-              accessibilityLabel="Create a new deck"
-            >
-              <ButtonText style={Type.bodyBold}>+ New Deck</ButtonText>
-            </Button>
+            {/* One "+ New Deck" per state: the empty state carries its own, so the header one only appears once decks exist. */}
+            {!loading && !error && decks.length > 0 ? (
+              <Button
+                variant="outline"
+                className="min-h-11 rounded-xl px-3.5"
+                onPress={openCreate}
+                accessibilityRole="button"
+                accessibilityLabel="Create a new deck"
+              >
+                <ButtonText style={Type.bodyBold}>+ New Deck</ButtonText>
+              </Button>
+            ) : null}
             <ThemeToggle />
           </View>
         </View>
@@ -149,14 +155,7 @@ export default function SelfStudyScreen() {
         {loading ? (
           <ActivityIndicator size="large" color={Accents.primary} style={{ marginTop: 40 }} />
         ) : error ? (
-          <Box className="items-center gap-3 p-6">
-            <UIText className="text-muted-foreground text-center" style={Type.body}>
-              {error}
-            </UIText>
-            <Button variant="default" className="min-h-11 rounded-xl" onPress={load} accessibilityRole="button">
-              <ButtonText style={Type.bodyBold}>Retry</ButtonText>
-            </Button>
-          </Box>
+          <ErrorState message={error} onRetry={load} />
         ) : (
           <FlatList
             data={decks}
@@ -169,7 +168,7 @@ export default function SelfStudyScreen() {
                   No decks yet
                 </Heading>
                 <UIText className="text-muted-foreground text-center" style={Type.body}>
-                  Create your first deck to start studying — it lives on this device, no account needed.
+                  Your decks are saved on this phone only. Clearing the app or switching phones removes them.
                 </UIText>
                 <Button variant="default" className="min-h-11 rounded-xl" onPress={openCreate} accessibilityRole="button">
                   <ButtonText style={Type.bodyBold}>+ New Deck</ButtonText>
@@ -210,7 +209,7 @@ export default function SelfStudyScreen() {
 
         <Modal
           visible={modalVisible}
-          animationType="fade"
+          animationType={reduceMotion ? 'none' : 'fade'}
           transparent
           statusBarTranslucent
           onRequestClose={() => setModalVisible(false)}
@@ -254,6 +253,12 @@ export default function SelfStudyScreen() {
                   />
                 </Input>
 
+                {!title.trim() && !saving ? (
+                  <UIText className="text-xs text-muted-foreground" style={Type.body}>
+                    Give your deck a name to save it.
+                  </UIText>
+                ) : null}
+
                 {createError ? (
                   <UIText
                     accessibilityRole="alert"
@@ -271,6 +276,7 @@ export default function SelfStudyScreen() {
                     onPress={() => setModalVisible(false)}
                     disabled={saving}
                     accessibilityRole="button"
+                    accessibilityLabel="Cancel, close dialog"
                   >
                     <ButtonText style={Type.bodyBold}>Cancel</ButtonText>
                   </Button>
@@ -280,7 +286,7 @@ export default function SelfStudyScreen() {
                     onPress={handleCreateDeck}
                     disabled={saving || !title.trim()}
                     accessibilityRole="button"
-                    accessibilityState={{ disabled: saving }}
+                    accessibilityState={{ disabled: saving || !title.trim(), busy: saving }}
                   >
                     {saving ? <ActivityIndicator color={onAccent(Accents.primary)} /> : null}
                     <ButtonText style={Type.bodyBold}>Save</ButtonText>

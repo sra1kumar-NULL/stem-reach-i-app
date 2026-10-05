@@ -1,22 +1,24 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, StyleSheet } from 'react-native';
+import { ActivityIndicator, Animated, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { getMe } from '@/api/client';
-import { ConfirmSheet } from '@/components/confirm-sheet';
+import { getFeedToday, getMe } from '@/api/client';
 import { Box } from '@/components/ui/box';
 import { Button, ButtonText } from '@/components/ui/button';
 import { Heading } from '@/components/ui/heading';
 import { Text as UIText } from '@/components/ui/text';
-import { Accents, Type } from '@/constants/theme';
-import { useConfirmSignOut } from '@/hooks/use-confirm-sign-out';
+import { Type } from '@/constants/theme';
 import type { MeResponse } from '@stemreach/core';
+
+const AnimatedUIText = Animated.createAnimatedComponent(UIText);
 
 export default function SummaryScreen() {
   const { correct = '0', attempted = '0' } = useLocalSearchParams<{ correct: string; attempted: string }>();
-  const { confirmOut, signingOut, openConfirm, closeConfirm, confirmSignOut } = useConfirmSignOut();
   const [me, setMe] = useState<MeResponse | null>(null);
+  // Only show a win the server agrees with: today's feed must report `completed`.
+  // 'checking' → spinner, 'ok' → summary, 'leave' → back to the feed.
+  const [gate, setGate] = useState<'checking' | 'ok' | 'leave'>('checking');
   const pop = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -32,25 +34,49 @@ export default function SummaryScreen() {
   const hero = hasSession ? (pct >= 80 ? '🏆' : pct >= 50 ? '🎉' : '💪') : '🎊';
 
   useEffect(() => {
+    let alive = true;
+    getFeedToday()
+      .then((feed) => alive && setGate(feed.progress.completed ? 'ok' : 'leave'))
+      // Feed unreachable (offline right after finishing): trust the in-session score, never a hand-typed URL.
+      .catch(() => alive && setGate(hasSession ? 'ok' : 'leave'));
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (gate !== 'ok') return;
     Animated.sequence([
       Animated.delay(150),
       Animated.spring(pop, { toValue: 1, useNativeDriver: true, friction: 5, tension: 70 }),
     ]).start();
-  }, [pop]);
+  }, [pop, gate]);
+
+  if (gate === 'leave') return <Redirect href="/" />;
+  if (gate === 'checking') {
+    return (
+      <Box className="flex-1 items-center justify-center bg-background">
+        <ActivityIndicator size="large" accessibilityLabel="Loading" />
+      </Box>
+    );
+  }
 
   return (
     <Box className="flex-1 bg-background">
       <SafeAreaView style={styles.safe}>
-        <Animated.Text style={[styles.hero, { transform: [{ scale: pop.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] }) }, { rotate: pop.interpolate({ inputRange: [0, 1], outputRange: ['-12deg', '0deg'] }) }] }]}>
+        <AnimatedUIText accessible={false} style={[styles.hero, { transform: [{ scale: pop.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] }) }, { rotate: pop.interpolate({ inputRange: [0, 1], outputRange: ['-12deg', '0deg'] }) }] }]}>
           {hero}
-        </Animated.Text>
+        </AnimatedUIText>
 
         <Heading className="text-center text-3xl" style={Type.heading}>
-          Daily Revision Complete!
+          You&apos;re done for today!
         </Heading>
 
         <Box className="bg-card items-center p-8 rounded-3xl gap-2 self-stretch">
           <Animated.View
+            accessible={hasSession}
+            accessibilityLabel={hasSession ? `${c} out of ${a} correct` : undefined}
             style={{
               opacity: pop,
               transform: [{ translateY: pop.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }],
@@ -58,9 +84,9 @@ export default function SummaryScreen() {
           >
             {hasSession ? (
               <>
-                <UIText className="text-6xl font-extrabold text-foreground" style={Type.headingBold}>
+                <UIText accessible={false} className="text-6xl font-extrabold text-foreground" style={Type.headingBold}>
                   {c}
-                  <UIText className="text-4xl font-bold text-muted-foreground" style={Type.heading}>
+                  <UIText accessible={false} className="text-4xl font-bold text-muted-foreground" style={Type.heading}>
                     /{a}
                   </UIText>
                 </UIText>
@@ -101,28 +127,10 @@ export default function SummaryScreen() {
           className="min-h-11 rounded-2xl self-stretch"
           onPress={() => router.push('/(self-study)')}
           accessibilityRole="button"
+          accessibilityLabel="Review my decks in self-study"
         >
           <ButtonText style={Type.bodyBold}>Review my decks</ButtonText>
         </Button>
-        <Pressable
-          onPress={openConfirm}
-          style={({ pressed }) => [styles.signoutPill, pressed && { opacity: 0.6 }]}
-          accessibilityRole="button"
-          accessibilityLabel="Sign out"
-        >
-          <UIText className="text-muted-foreground font-semibold" style={Type.bodySemi}>
-            Sign out
-          </UIText>
-        </Pressable>
-        <ConfirmSheet
-          visible={confirmOut}
-          title="Sign out?"
-          message="You'll need to sign in again to continue."
-          confirmLabel="Sign out"
-          loading={signingOut}
-          onConfirm={confirmSignOut}
-          onCancel={closeConfirm}
-        />
       </SafeAreaView>
     </Box>
   );
@@ -131,5 +139,4 @@ export default function SummaryScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 24 },
   hero: { fontSize: 72 },
-  signoutPill: { minHeight: 44, justifyContent: 'center', borderWidth: 1, borderColor: Accents.border, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 8 },
 });

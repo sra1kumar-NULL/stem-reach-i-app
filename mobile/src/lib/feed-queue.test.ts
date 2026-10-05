@@ -11,6 +11,7 @@ import {
   markAnswered,
   MAX_SKIPS,
   nextIndex,
+  positionLabel,
   remainingCount,
   skipCard,
   skippedRemaining,
@@ -99,4 +100,12 @@ test('nextIndex wraps to an earlier unanswered card when none follow', () => {
   let q = createQueue(['a', 'b', 'c']);
   q = markAnswered(markAnswered(q, 'b'), 'c');
   assert.equal(nextIndex(q, 2), 0);
+});
+
+test('positionLabel agrees with the header counter and handles extra reviews', () => {
+  assert.equal(positionLabel(1, 15), 'Question 1 of 15');
+  assert.equal(positionLabel(15, 15), 'Question 15 of 15');
+  assert.equal(positionLabel(16, 15), 'Extra practice');
+  assert.equal(positionLabel(0, 15), 'Question 1 of 15');
+  assert.equal(positionLabel(1, 0), 'Extra practice');
 });

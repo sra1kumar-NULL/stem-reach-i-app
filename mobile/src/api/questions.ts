@@ -9,6 +9,8 @@ import type {
 
 import { ApiError, apiFetch } from '@/api/client';
 import type { CreatePayload, PatchPayload } from '@/lib/question-editor';
+import { onSignOut } from '@/lib/session-cleanup';
+import { syllabusStore } from '@/lib/syllabus-store';
 
 /** Query values the list screen sends (a typed subset of ListQuestionsQuery). */
 export type QuestionFilters = Pick<ListQuestionsQuery, 'section_id' | 'q' | 'type' | 'difficulty' | 'language' | 'status' | 'archived' | 'limit' | 'cursor'>;
@@ -24,6 +26,12 @@ function qs(params: Record<string, string | number | undefined>): string {
 const cache = new Map<string, TeacherQuestionDto>();
 let listVersion = 0;
 
+// Never show the previous user's questions to the next one.
+onSignOut(() => {
+  cache.clear();
+  listVersion += 1;
+});
+
 export function rememberQuestions(rows: TeacherQuestionDto[]): void {
   for (const r of rows) cache.set(r.id, r);
 }
@@ -36,6 +44,8 @@ export function questionsVersion(): number {
 }
 function touch(row?: TeacherQuestionDto): void {
   listVersion += 1;
+  // Topic question counts change with every question write.
+  syllabusStore.invalidate();
   if (row) cache.set(row.id, row);
 }
 

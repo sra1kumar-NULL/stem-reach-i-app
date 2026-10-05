@@ -1,0 +1,16 @@
+/* Self-hosted web fonts (loaded by <Head> in src/app/_layout.tsx, web only).
+   Family names match the CSS stacks in src/global.css (--font-sans / --font-rounded).
+   Latin: Nunito / Fredoka. Kannada (U+0C80-0CFF): Noto Sans Kannada, declared under
+   the SAME family names with unicode-range so Kannada text never falls to tofu. */
+@font-face{font-family:Nunito;font-style:normal;font-weight:400 500;font-display:swap;src:url(/fonts/Nunito_400Regular.ttf) format('truetype');}
+@font-face{font-family:Nunito;font-style:normal;font-weight:600;font-display:swap;src:url(/fonts/Nunito_600SemiBold.ttf) format('truetype');}
+@font-face{font-family:Nunito;font-style:normal;font-weight:700 900;font-display:swap;src:url(/fonts/Nunito_700Bold.ttf) format('truetype');}
+@font-face{font-family:Nunito;font-style:normal;font-weight:400 500;font-display:swap;src:url(/fonts/NotoSansKannada-400.ttf) format('truetype');unicode-range:U+0C80-0CFF,U+1CD0,U+1CD2,U+1CD4-1CFA,U+200C-200D,U+25CC;}
+@font-face{font-family:Nunito;font-style:normal;font-weight:600;font-display:swap;src:url(/fonts/NotoSansKannada-600.ttf) format('truetype');unicode-range:U+0C80-0CFF,U+1CD0,U+1CD2,U+1CD4-1CFA,U+200C-200D,U+25CC;}
+@font-face{font-family:Nunito;font-style:normal;font-weight:700 900;font-display:swap;src:url(/fonts/NotoSansKannada-700.ttf) format('truetype');unicode-range:U+0C80-0CFF,U+1CD0,U+1CD2,U+1CD4-1CFA,U+200C-200D,U+25CC;}
+@font-face{font-family:Fredoka;font-style:normal;font-weight:400 500;font-display:swap;src:url(/fonts/Fredoka_500Medium.ttf) format('truetype');}
+@font-face{font-family:Fredoka;font-style:normal;font-weight:600;font-display:swap;src:url(/fonts/Fredoka_600SemiBold.ttf) format('truetype');}
+@font-face{font-family:Fredoka;font-style:normal;font-weight:700 900;font-display:swap;src:url(/fonts/Fredoka_700Bold.ttf) format('truetype');}
+@font-face{font-family:Fredoka;font-style:normal;font-weight:400 500;font-display:swap;src:url(/fonts/NotoSansKannada-400.ttf) format('truetype');unicode-range:U+0C80-0CFF,U+1CD0,U+1CD2,U+1CD4-1CFA,U+200C-200D,U+25CC;}
+@font-face{font-family:Fredoka;font-style:normal;font-weight:600;font-display:swap;src:url(/fonts/NotoSansKannada-600.ttf) format('truetype');unicode-range:U+0C80-0CFF,U+1CD0,U+1CD2,U+1CD4-1CFA,U+200C-200D,U+25CC;}
+@font-face{font-family:Fredoka;font-style:normal;font-weight:700 900;font-display:swap;src:url(/fonts/NotoSansKannada-700.ttf) format('truetype');unicode-range:U+0C80-0CFF,U+1CD0,U+1CD2,U+1CD4-1CFA,U+200C-200D,U+25CC;}

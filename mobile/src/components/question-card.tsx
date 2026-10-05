@@ -1,20 +1,25 @@
 import { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Confetti } from '@/components/confetti';
+import { RatingButtons, type RatingValue, SHOW_ANSWER_BG, SHOW_ANSWER_FG } from '@/components/student/rating-buttons';
 import { hapticError, hapticFlip, hapticLight, hapticSuccess } from '@/components/haptics';
 import { Box } from '@/components/ui/box';
 import { Button, ButtonText } from '@/components/ui/button';
 import { Text as UIText } from '@/components/ui/text';
-import { Accents, onAccent, Type } from '@/constants/theme';
+import { Accents, Type } from '@/constants/theme';
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { toFriendlyError } from '@/lib/friendly-error';
 import type { QuestionDto, SelfEval, SubmissionResponse } from '@stemreach/core';
 
 interface Props {
   question: QuestionDto;
   sectionLabel: string;
+  /** Position shown on the card, consistent with the feed header counter (answered + 1). */
   questionNo: number;
   total: number;
+  /** Overrides "Question {questionNo} of {total}" (e.g. "Extra practice"). */
+  positionLabel?: string;
   onSubmit: (questionId: string, body: { selected_option?: number; self_eval?: SelfEval }) => Promise<SubmissionResponse>;
   onAnswered: (isCorrect: boolean) => void;
   onAdvance: () => void;
@@ -27,7 +32,7 @@ interface Props {
 }
 
 /** One full-screen question card (MCQ or flashcard) for the vertical feed. */
-export function QuestionCard({ question, sectionLabel, questionNo, total, onSubmit, onAnswered, onAdvance, onSkip, skipNote, isLast }: Props) {
+export function QuestionCard({ question, sectionLabel, questionNo, total, positionLabel, onSubmit, onAnswered, onAdvance, onSkip, skipNote, isLast }: Props) {
   const finishing = isLast ?? questionNo >= total;
   const [selected, setSelected] = useState<number | null>(null);
   const [result, setResult] = useState<SubmissionResponse | null>(null);
@@ -45,9 +50,22 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
   const advanceRef = useRef(onAdvance);
   advanceRef.current = onAdvance;
   const isMcq = question.type === 'mcq';
+  const reduceMotion = useReducedMotion();
+  const reduceRef = useRef(reduceMotion);
+  reduceRef.current = reduceMotion;
+
+  /** Spring to `toValue`, or jump there when the OS asks for reduced motion. */
+  const settle = (value: Animated.Value, toValue: number, friction: number, tension: number) => {
+    if (reduceRef.current) {
+      value.setValue(toValue);
+      return;
+    }
+    Animated.spring(value, { toValue, useNativeDriver: true, friction, tension }).start();
+  };
 
   useEffect(() => {
-    Animated.spring(entry, { toValue: 1, useNativeDriver: true, friction: 8, tension: 55 }).start();
+    if (reduceRef.current) entry.setValue(1);
+    else Animated.spring(entry, { toValue: 1, useNativeDriver: true, friction: 8, tension: 55 }).start();
   }, [entry]);
 
   // After answering: announce the feedback, and auto-advance only when there
@@ -55,7 +73,7 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
   // otherwise the explicit Next button is the way on (WCAG 2.2.1).
   useEffect(() => {
     if (result == null) return;
-    Animated.spring(pop, { toValue: 1, useNativeDriver: true, friction: 5, tension: 90 }).start();
+    settle(pop, 1, 5, 90);
     const verdict = isMcq
       ? result.is_correct
         ? 'Correct!'
@@ -89,7 +107,7 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
       onAnswered(res.is_correct);
       if (res.is_correct) {
         hapticSuccess();
-        setConfetti(true);
+        if (!reduceRef.current) setConfetti(true);
       } else {
         hapticError();
       }
@@ -126,7 +144,7 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
     // Android ignores backfaceVisibility for touches, so the faces also need
     // pointerEvents or the hidden grade buttons swallow taps on "Show Answer".
     setFlipped(true);
-    Animated.spring(flip, { toValue: 1, useNativeDriver: true, friction: 6, tension: 60 }).start();
+    settle(flip, 1, 6, 60);
   };
 
   const frontRotate = flip.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] });
@@ -158,7 +176,7 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
               </UIText>
             </Box>
             <UIText className="text-sm text-muted-foreground" style={[Type.bodySemi, styles.metaLabel]} numberOfLines={2}>
-              {sectionLabel} · Q{questionNo}/{total}
+              {sectionLabel} · {positionLabel ?? `Question ${questionNo} of ${total}`}
             </UIText>
           </View>
 
@@ -247,11 +265,11 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
                   variant="outline"
                   size="lg"
                   className="rounded-2xl"
-                  style={{ backgroundColor: Accents.purple, borderColor: Accents.purple }}
+                  style={{ backgroundColor: SHOW_ANSWER_BG, borderColor: SHOW_ANSWER_BG }}
                   onPress={doFlip}
                   disabled={busy}
                 >
-                  <ButtonText style={{ ...Type.bodyBold, color: onAccent(Accents.purple) }}>
+                  <ButtonText style={{ ...Type.bodyBold, color: SHOW_ANSWER_FG }}>
                     👀 Show Answer
                   </ButtonText>
                 </Button>
@@ -273,31 +291,7 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
                 </Box>
 
                 {result == null ? (
-                  <View style={styles.evalRow}>
-                    {EVAL_BUTTONS.map(({ value, label, variant, color, labelColor }) => {
-                      const loading = busy && pendingEval === value;
-                      return (
-                        <Button
-                          key={value}
-                          variant={variant}
-                          className={`flex-1 rounded-2xl ${busy && !loading ? 'opacity-40' : ''}`}
-                          style={color ? { backgroundColor: color } : undefined}
-                          onPress={() => answerFlashcard(value)}
-                          disabled={busy}
-                          accessibilityLabel={label}
-                          accessibilityState={{ disabled: busy, busy: loading }}
-                        >
-                          {loading ? (
-                            <ActivityIndicator size="small" color={labelColor} />
-                          ) : (
-                            <ButtonText style={labelColor ? { ...Type.bodyBold, color: labelColor } : Type.bodyBold}>
-                              {EVAL_EMOJI[value]} {label}
-                            </ButtonText>
-                          )}
-                        </Button>
-                      );
-                    })}
-                  </View>
+                  <RatingButtons values={FLASHCARD_RATINGS} busy={busy} pending={pendingEval as RatingValue | null} onPick={(v) => void answerFlashcard(v)} />
                 ) : (
                   <Animated.View style={{ opacity: pop, transform: [{ scale: pop.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }) }] }}>
                     <Box
@@ -346,7 +340,7 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
             </Box>
           )}
 
-          {result == null && (onSkip != null || skipNote != null) && (
+          {result == null && !flipped && (onSkip != null || skipNote != null) && (
             <View style={styles.skipArea}>
               {skipNote != null && (
                 <UIText accessibilityLiveRegion="polite" className="text-sm text-muted-foreground text-center" style={Type.bodySemi}>
@@ -354,19 +348,20 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
                 </UIText>
               )}
               {onSkip != null && (
-                <Pressable
+                <Button
+                  variant="ghost"
+                  className="min-h-11 min-w-24 rounded-xl px-5"
                   onPress={onSkip}
                   disabled={busy}
                   accessibilityRole="button"
                   accessibilityLabel="Skip this question"
                   accessibilityHint="Moves it to the end. Nothing is recorded."
                   accessibilityState={{ disabled: busy }}
-                  style={({ pressed }) => [styles.skipBtn, busy && { opacity: 0.4 }, pressed && { opacity: 0.6 }]}
                 >
-                  <UIText className="text-muted-foreground" style={[Type.bodySemi, styles.skipText]}>
+                  <ButtonText className="text-muted-foreground" style={Type.bodySemi}>
                     Skip
-                  </UIText>
-                </Pressable>
+                  </ButtonText>
+                </Button>
               )}
             </View>
           )}
@@ -389,22 +384,7 @@ export function QuestionCard({ question, sectionLabel, questionNo, total, onSubm
   );
 }
 
-type EvalChoice = Extract<SelfEval, 'again' | 'good' | 'easy'>;
-
-const EVAL_EMOJI: Record<EvalChoice, string> = { again: '🔁', good: '👌', easy: '⚡' };
-
-// Self-grade buttons (wire value `good` is unchanged — only the label reads "Average"); `labelColor` doubles as the spinner colour while the answer is in flight.
-const EVAL_BUTTONS: {
-  value: EvalChoice;
-  label: string;
-  variant: 'destructive' | 'default';
-  color?: string;
-  labelColor?: string;
-}[] = [
-  { value: 'again', label: 'Again', variant: 'destructive' },
-  { value: 'good', label: 'Average', variant: 'default', color: Accents.success, labelColor: onAccent(Accents.success) },
-  { value: 'easy', label: 'Easy', variant: 'default', color: Accents.teal, labelColor: onAccent(Accents.teal) },
-];
+const FLASHCARD_RATINGS = ['again', 'good', 'easy'] as const;
 
 const styles = StyleSheet.create({
   entry: { flex: 1 },
@@ -430,7 +410,4 @@ const styles = StyleSheet.create({
   // instead of overflowing onto the Next button at large font scales.
   flipBack: { gap: 12, backfaceVisibility: 'hidden' },
   skipArea: { alignItems: 'center', gap: 2 },
-  skipBtn: { minHeight: 44, minWidth: 88, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20 },
-  skipText: { fontSize: 16, textDecorationLine: 'underline' },
-  evalRow: { flexDirection: 'row', gap: 10 },
 });

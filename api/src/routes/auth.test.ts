@@ -16,7 +16,11 @@ test("checkTeacherInvite: disabled when unset, constant-time match otherwise", (
   assert.equal(checkTeacherInvite("s3cret", "s3cret"), "ok");
 });
 
-function signupApp(teacherInviteCode?: string, limiter?: FailureLimiter) {
+function signupApp(
+  teacherInviteCode?: string,
+  limiter?: FailureLimiter,
+  options?: { globalInviteLimiter?: FailureLimiter; signupLimiter?: FailureLimiter },
+) {
   const created: unknown[] = [];
   const serviceRole = {
     auth: {
@@ -32,11 +36,14 @@ function signupApp(teacherInviteCode?: string, limiter?: FailureLimiter) {
   const { db } = fakeDb([[], [], [], [], [], [], [], []]);
   const app = new Hono();
   app.onError(errorHandler({ error: () => undefined } as unknown as Console));
-  app.route("/", auth.routes(fakeCtx(db, { serviceRole, teacherInviteCode }), limiter));
-  const signup = (body: Record<string, unknown>, ip = "203.0.113.7") =>
+  // Default signup cap is high so only tests that care about it hit it.
+  const signupLimiter = options?.signupLimiter ?? new FailureLimiter({ max: 1000, windowMs: 60_000 });
+  app.route("/", auth.routes(fakeCtx(db, { serviceRole, teacherInviteCode }), limiter, { ...options, signupLimiter }));
+  // The proxy appends the real client address as the LAST entry; `spoof` is what the client prepended.
+  const signup = (body: Record<string, unknown>, ip = "203.0.113.7", spoof = "") =>
     app.request("/signup", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Forwarded-For": `${ip}, 10.0.0.1` },
+      headers: { "Content-Type": "application/json", "X-Forwarded-For": spoof ? `${spoof}, ${ip}` : ip },
       body: JSON.stringify({ full_name: "T", email: "t@example.com", password: "password1", ...body }),
     });
   return { signup, created };
@@ -100,4 +107,47 @@ test("successful and student signups never consume the failure budget", async ()
     assert.equal((await signup({ role: "teacher", teacher_invite_code: "s3cret" })).status, 201);
   }
   assert.equal(limiter.size, 0);
+});
+
+test("spoofed leading X-Forwarded-For hops do not reset the invite counter", async () => {
+  const limiter = new FailureLimiter({ max: 5, windowMs: 15 * 60_000, now: () => 0 });
+  const { signup } = signupApp("s3cret", limiter);
+  for (let i = 0; i < 5; i++) {
+    assert.equal((await signup({ role: "teacher", teacher_invite_code: `g${i}` }, "203.0.113.7", `1.2.3.${i}`)).status, 403);
+  }
+  const blocked = await signup({ role: "teacher", teacher_invite_code: "g6" }, "203.0.113.7", "9.9.9.9");
+  assert.equal(blocked.status, 429, "a fresh spoofed first hop must not give a fresh budget");
+});
+
+test("global invite cap blocks rotating IPs, even with the right code; students unaffected", async () => {
+  let t = 0;
+  const globalInviteLimiter = new FailureLimiter({ max: 3, windowMs: 60 * 60_000, now: () => t, maxKeys: 1 });
+  const limiter = new FailureLimiter({ max: 5, windowMs: 15 * 60_000, now: () => t });
+  const { signup } = signupApp("s3cret", limiter, { globalInviteLimiter });
+  for (let i = 0; i < 3; i++) {
+    assert.equal((await signup({ role: "teacher", teacher_invite_code: "x" }, `198.51.100.${i}`)).status, 403);
+  }
+  const blocked = await signup({ role: "teacher", teacher_invite_code: "s3cret" }, "198.51.100.77");
+  assert.equal(blocked.status, 429);
+  assert.equal(blocked.headers.get("Retry-After"), "3600");
+  assert.equal((await signup({ role: "student", class_section: "10A" }, "198.51.100.78")).status, 201);
+  t += 60 * 60_000;
+  assert.equal((await signup({ role: "teacher", teacher_invite_code: "s3cret" }, "198.51.100.77")).status, 201);
+});
+
+test("per-IP signup cap counts successes and failures, keeps messages, expires with the window", async () => {
+  let t = 0;
+  const signupLimiter = new FailureLimiter({ max: 3, windowMs: 60 * 60_000, now: () => t });
+  const { signup, created } = signupApp("s3cret", undefined, { signupLimiter });
+  assert.equal((await signup({ role: "student", class_section: "10A" })).status, 201);
+  assert.equal((await signup({ role: "teacher", teacher_invite_code: "nope" })).status, 403);
+  assert.equal((await signup({ role: "student", class_section: "10A" })).status, 201);
+  const blocked = await signup({ role: "student", class_section: "10A" });
+  assert.equal(blocked.status, 429);
+  assert.equal(((await blocked.json()) as { error: { code: string } }).error.code, "too_many_attempts");
+  assert.equal(created.length, 2);
+  // Another client is unaffected.
+  assert.equal((await signup({ role: "student", class_section: "10A" }, "198.51.100.9")).status, 201);
+  t += 60 * 60_000;
+  assert.equal((await signup({ role: "student", class_section: "10A" })).status, 201);
 });

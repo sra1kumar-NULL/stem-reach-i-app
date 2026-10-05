@@ -138,6 +138,7 @@ test("calendar day: activated sections, created questions and participation", as
   const { app } = mk([
     [{ id: SET, date: "2026-10-04" }], // the day's set
     [{ daily_set_id: SET, id: S1, section_no: "12.1", name: "Fields", question_count: 6 }], // its sections
+    [], // its cohorts (none)
     [qRow], // questions created that local day
     [{ n: 3 }], // answered students
     [{ n: 5 }], // total students

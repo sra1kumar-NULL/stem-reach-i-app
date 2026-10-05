@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router, type Href } from 'expo-router';
+import { router, useFocusEffect, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type {
   ActivationRangeResponse,
@@ -10,6 +10,7 @@ import type {
   SyllabusResponse,
 } from '@stemreach/core';
 
+import { getSchoolToday } from '@/api/reports';
 import { getActivationRange, getCalendarDay, getCalendarMonth, planActivations } from '@/api/calendar';
 import { getSyllabus } from '@/api/client';
 import { ConfirmSheet } from '@/components/confirm-sheet';
@@ -23,19 +24,24 @@ import { Heading } from '@/components/ui/heading';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text as UIText } from '@/components/ui/text';
 import { Accents, Type } from '@/constants/theme';
+import { PRIMARY_SOLID } from '@/components/teacher-home/tokens';
 import { useTheme } from '@/hooks/use-theme';
 import {
   copyLastWeek,
   formatLongDate,
+  formatRangeShort,
   formatShortDate,
   groupBySections,
+  isFresh,
   lastWeekRange,
   monthOf,
+  partialCopyMessage,
   shiftMonth,
   tintFromPct,
   type CopyProposal,
 } from '@/lib/calendar';
 import { toFriendlyError } from '@/lib/friendly-error';
+import { onSignOut } from '@/lib/session-cleanup';
 import { localDateString } from '@/lib/sm2';
 
 type MonthCache = Record<string, CalendarMonthResponse>;
@@ -49,11 +55,17 @@ interface PendingConfirm {
 
 const DOT_QUESTIONS = Accents.primary;
 const DOT_TOPICS = Accents.success;
+/** Day-panel cache lifetime: short, because teachers add questions/activations in other tabs. */
+const DAY_TTL_MS = 60_000;
+/** Questions listed in the day panel before "Show all". */
+const QUESTIONS_PREVIEW = 5;
 
 export default function CalendarScreen() {
   const theme = useTheme();
   const { showToast } = useToast();
-  const [today] = useState(() => localDateString());
+  // School-calendar day (device day until the API answers); refreshed on focus/resume, never frozen at mount.
+  const [today, setToday] = useState(() => localDateString());
+  const todayRef = useRef(today);
   const [month, setMonth] = useState(() => monthOf(today));
   const [cache, setCache] = useState<MonthCache>({});
   const [monthError, setMonthError] = useState<string | null>(null);
@@ -64,7 +76,11 @@ export default function CalendarScreen() {
   const [dayDate, setDayDate] = useState<string | null>(null);
   const [dayData, setDayData] = useState<CalendarDayResponse | null>(null);
   const [dayError, setDayError] = useState<string | null>(null);
-  const dayCache = useRef<Record<string, CalendarDayResponse>>({});
+  const dayCache = useRef<Record<string, { res: CalendarDayResponse; at: number }>>({});
+  const dayDateRef = useRef<string | null>(null);
+  dayDateRef.current = dayDate;
+  const monthRef = useRef(month);
+  monthRef.current = month;
 
   // Plan mode
   const [planMode, setPlanMode] = useState(false);
@@ -131,19 +147,66 @@ export default function CalendarScreen() {
   );
 
   // ── Day panel ──
-  const loadDay = useCallback(async (date: string) => {
+  const loadDay = useCallback(async (date: string, opts: { force?: boolean } = {}) => {
     setDayError(null);
     const cached = dayCache.current[date];
-    if (cached) setDayData(cached);
+    if (cached) setDayData(cached.res);
     else setDayData(null);
+    if (!opts.force && cached && isFresh(cached.at, Date.now(), DAY_TTL_MS)) return;
     try {
       const res = await getCalendarDay(date);
-      dayCache.current[date] = res;
+      dayCache.current[date] = { res, at: Date.now() };
       setDayData((cur) => (cur === null || cur.date === date ? res : cur));
     } catch (e) {
       if (!cached) setDayError(toFriendlyError(e, 'Could not load this day.'));
     }
   }, []);
+
+  /** Re-reads everything the screen shows: today, the visible month and the open day. */
+  const refresh = useCallback(async () => {
+    const t = await getSchoolToday();
+    if (t !== todayRef.current) {
+      const prev = todayRef.current;
+      todayRef.current = t;
+      setToday(t);
+      // Was looking at the (old) current month: follow the new "today".
+      if (monthRef.current === monthOf(prev)) setMonth(monthOf(t));
+    }
+    // Coming back to the tab: anything cached may be stale (questions/activations change in other tabs).
+    dayCache.current = {};
+    const m = monthRef.current;
+    void loadMonth(m, { force: true, silent: true });
+    void loadMonth(shiftMonth(m, -1), { silent: true });
+    void loadMonth(shiftMonth(m, 1), { silent: true });
+    if (dayDateRef.current) void loadDay(dayDateRef.current, { force: true });
+  }, [loadMonth, loadDay]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refresh();
+      const sub = AppState.addEventListener('change', (st) => {
+        if (st === 'active') void refresh();
+      });
+      return () => sub.remove();
+    }, [refresh]),
+  );
+
+  // Module/screen caches hold the previous account's data: drop them on sign-out.
+  useEffect(
+    () =>
+      onSignOut(() => {
+        requested.current = {};
+        dayCache.current = {};
+        setCache({});
+        setDayDate(null);
+        setDayData(null);
+        setSyllabus(null);
+        setPlanMode(false);
+        setPlanDates(new Set());
+        setPickedSections(new Set());
+      }),
+    [],
+  );
 
   const onSelectDate = (date: string) => {
     if (planMode) {
@@ -161,6 +224,11 @@ export default function CalendarScreen() {
   };
 
   const closeDay = () => setDayDate(null);
+
+  const openParticipation = (date: string) => {
+    setDayDate(null);
+    router.push(`/(teacher)/participation?date=${encodeURIComponent(date)}` as Href);
+  };
 
   const openQuestion = (id: string) => {
     setDayDate(null);
@@ -217,10 +285,12 @@ export default function CalendarScreen() {
   const afterPlan = useCallback(
     async (dates: string[]) => {
       const months = new Set(dates.map(monthOf));
-      for (const d of dates) delete dayCache.current[d];
+      // Counts on any day may have changed: drop the whole day cache and reload the open day.
+      dayCache.current = {};
+      if (dayDateRef.current) void loadDay(dayDateRef.current, { force: true });
       await Promise.all([...months].map((m) => loadMonth(m, { force: true, silent: m !== month })));
     },
-    [loadMonth, month],
+    [loadMonth, loadDay, month],
   );
 
   const reviewPlan = () => {
@@ -269,16 +339,26 @@ export default function CalendarScreen() {
         message: `${lines.join('\n')}\n\nSame weekdays, one week later. Existing activations on those days are replaced.`,
         run: async () => {
           const groups = groupBySections(proposals);
-          let done = 0;
-          try {
-            for (const g of groups) {
+          const copied: string[] = [];
+          let failure: unknown = null;
+          for (const g of groups) {
+            try {
               await planActivations({ dates: g.dates, section_ids: g.section_ids });
-              done += g.dates.length;
+              copied.push(...g.dates);
+            } catch (e) {
+              failure = e;
+              break;
             }
-          } finally {
-            await afterPlan(proposals.map((p) => p.date));
           }
-          showToast(`Copied ${done} ${done === 1 ? 'day' : 'days'} from last week.`);
+          await afterPlan(proposals.map((p) => p.date));
+          if (failure) {
+            // Some groups may already be saved: say which dates, never a bare "failed".
+            if (copied.length === 0) throw failure;
+            const failed = proposals.map((p) => p.date).filter((d) => !copied.includes(d));
+            showToast(partialCopyMessage(copied.sort(), failed, formatShortDate), 'error');
+            return;
+          }
+          showToast(`Copied ${copied.length} ${copied.length === 1 ? 'day' : 'days'} from last week.`);
         },
       });
     } catch (e) {
@@ -304,13 +384,14 @@ export default function CalendarScreen() {
 
   const monthEmpty = !!current && current.days.length === 0;
   const dateCount = planDates.size;
+  const lastWeek = lastWeekRange(today);
 
   return (
     <Box className="flex-1 bg-background">
       <SafeAreaView style={styles.safe}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.headerRow}>
-            <Heading className="text-2xl" style={[Type.heading, styles.headerTitle]} accessibilityRole="header">
+            <Heading style={[Type.heading, styles.headerTitle]} accessibilityRole="header">
               Calendar
             </Heading>
             <Pressable
@@ -320,7 +401,7 @@ export default function CalendarScreen() {
               accessibilityLabel={planMode ? 'Leave plan mode' : 'Plan ahead'}
               style={({ pressed }) => [
                 styles.pill,
-                { borderColor: Accents.primary, backgroundColor: planMode ? Accents.primary : 'transparent' },
+                { borderColor: planMode ? PRIMARY_SOLID : Accents.primary, backgroundColor: planMode ? PRIMARY_SOLID : 'transparent' },
                 pressed && { opacity: 0.7 },
               ]}
             >
@@ -331,15 +412,11 @@ export default function CalendarScreen() {
             </Pressable>
           </View>
 
-          {planMode ? (
-            <UIText className="text-sm text-muted-foreground" style={Type.body}>
-              Tap today or future days to select them, then choose the topics to activate.
-            </UIText>
-          ) : (
-            <UIText className="text-sm text-muted-foreground" style={Type.body}>
-              Tap a day to see what was added, activated and who took part.
-            </UIText>
-          )}
+          <UIText className="text-sm text-muted-foreground" style={Type.body} accessibilityLiveRegion="polite">
+            {planMode
+              ? 'Tap today or future days to select them, then choose the topics to activate.'
+              : 'Tap a day to see what was added, activated and who took part.'}
+          </UIText>
 
           <MonthGrid
             month={month}
@@ -356,7 +433,7 @@ export default function CalendarScreen() {
           <View style={styles.legend} accessibilityLabel="Legend">
             <LegendItem color={DOT_QUESTIONS} label="Questions added" textColor={theme.textSecondary} />
             <LegendItem color={DOT_TOPICS} label="Topics activated" textColor={theme.textSecondary} />
-            <LegendItem color={Accents.successSoft} label="Tint: participation" textColor={theme.textSecondary} square />
+            <LegendItem color={Accents.successSoft} label="Green day = students took part" textColor={theme.textSecondary} square />
           </View>
 
           {fetching && !current ? (
@@ -405,9 +482,12 @@ export default function CalendarScreen() {
                 className={`min-h-11 flex-1 rounded-2xl ${copying ? 'opacity-50' : ''}`}
                 disabled={copying}
                 onPress={() => void startCopyLastWeek()}
-                accessibilityLabel="Copy last week's activations to next week"
+                accessibilityLabel={`Copy last week's activations (${formatRangeShort(lastWeek.from, lastWeek.to)}) to next week`}
               >
-                <ButtonText style={Type.bodyBold}>{copying ? 'Loading…' : 'Copy last week'}</ButtonText>
+                <View style={styles.copyLabel}>
+                  <ButtonText style={Type.bodyBold}>{copying ? 'Loading…' : 'Copy last week'}</ButtonText>
+                  <Text style={[styles.copySub, { color: theme.textSecondary }]}>{formatRangeShort(lastWeek.from, lastWeek.to)}</Text>
+                </View>
               </Button>
             </View>
             {dateCount > 0 ? (
@@ -433,6 +513,7 @@ export default function CalendarScreen() {
             error={dayError}
             onRetry={() => void loadDay(dayDate)}
             onOpenQuestion={openQuestion}
+            onOpenParticipation={openParticipation}
           />
         ) : null}
       </FormSheet>
@@ -495,7 +576,7 @@ export default function CalendarScreen() {
                     onPress={() => toggleSection(s.id)}
                     accessibilityRole="checkbox"
                     accessibilityState={{ checked: pickedSections.has(s.id) }}
-                    accessibilityLabel={`${s.section_no} ${s.name}, ${s.enabled_question_count} questions`}
+                    accessibilityLabel={`${s.section_no} ${s.name}, ${s.enabled_question_count} live questions`}
                     style={[styles.checkRow, { marginLeft: 20 }]}
                   >
                     <Check state={pickedSections.has(s.id) ? 'on' : 'off'} />
@@ -504,7 +585,7 @@ export default function CalendarScreen() {
                         {s.section_no} {s.name}
                       </UIText>
                       <UIText className="text-xs text-muted-foreground" style={Type.body}>
-                        {s.enabled_question_count} questions
+                        {s.enabled_question_count} live
                       </UIText>
                     </View>
                   </Pressable>
@@ -532,6 +613,7 @@ function LegendItem({ color, label, textColor, square }: { color: string; label:
   return (
     <View style={styles.legendItem}>
       <View
+        accessible={false}
         style={[
           square ? styles.legendSquare : styles.legendDot,
           { backgroundColor: color },
@@ -548,7 +630,7 @@ function Check({ state }: { state: 'on' | 'off' | 'mixed' }) {
     <View
       style={[
         styles.check,
-        { borderColor: state === 'off' ? Accents.border : Accents.primary, backgroundColor: state === 'off' ? 'transparent' : Accents.primary },
+        { borderColor: state === 'off' ? Accents.border : PRIMARY_SOLID, backgroundColor: state === 'off' ? 'transparent' : PRIMARY_SOLID },
       ]}
     >
       {state !== 'off' ? <Ionicons name={state === 'on' ? 'checkmark' : 'remove'} size={14} color="#ECEFF4" /> : null}
@@ -562,13 +644,16 @@ function DayPanel({
   error,
   onRetry,
   onOpenQuestion,
+  onOpenParticipation,
 }: {
   date: string;
   data: CalendarDayResponse | null;
   error: string | null;
   onRetry: () => void;
   onOpenQuestion: (id: string) => void;
+  onOpenParticipation: (date: string) => void;
 }) {
+  const [showAll, setShowAll] = useState(false);
   const theme = useTheme();
   if (error && !data) return <ErrorState message={error} onRetry={onRetry} />;
   if (!data || data.date !== date) {
@@ -597,9 +682,18 @@ function DayPanel({
           Participation
         </UIText>
         {participation ? (
-          <UIText className="text-foreground" style={Type.body}>
-            {participation.answered_students} of {participation.total_students} students answered{pct !== null ? ` (${pct}%)` : ''}.
-          </UIText>
+          <Pressable
+            onPress={() => onOpenParticipation(date)}
+            accessibilityRole="link"
+            accessibilityLabel={`${participation.answered_students} of ${participation.total_students} students answered. See who took part`}
+            style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.7 }]}
+          >
+            <UIText className="flex-1 text-foreground" style={Type.body}>
+              {participation.answered_students} of {participation.total_students} students answered{pct !== null ? ` (${pct}%)` : ''}.
+            </UIText>
+            <Text style={[styles.linkText, { color: theme.primaryText }]}>Who?</Text>
+            <Ionicons name="chevron-forward" size={16} color={theme.primaryText} />
+          </Pressable>
         ) : (
           <UIText className="text-muted-foreground" style={Type.body}>
             No revision was activated, so there is no participation.
@@ -624,7 +718,7 @@ function DayPanel({
                   {s.section_no} {s.name}
                 </UIText>
                 <UIText className="text-xs text-muted-foreground" style={Type.body}>
-                  {s.question_count} questions
+                  {s.question_count} live
                 </UIText>
               </View>
             </View>
@@ -641,7 +735,7 @@ function DayPanel({
             None.
           </UIText>
         ) : (
-          data.questions_created.map((q) => (
+          (showAll ? data.questions_created : data.questions_created.slice(0, QUESTIONS_PREVIEW)).map((q) => (
             <Pressable
               key={q.id}
               onPress={() => onOpenQuestion(q.id)}
@@ -660,6 +754,19 @@ function DayPanel({
             </Pressable>
           ))
         )}
+        {data.questions_created.length > QUESTIONS_PREVIEW ? (
+          <Pressable
+            onPress={() => setShowAll((v) => !v)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: showAll }}
+            accessibilityLabel={showAll ? 'Show fewer questions' : `Show all ${data.questions_created.length} questions`}
+            style={styles.clearBtn}
+          >
+            <Text style={[styles.clearText, { color: theme.primaryText }]}>
+              {showAll ? 'Show fewer' : `Show all (${data.questions_created.length})`}
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
@@ -669,7 +776,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1 },
   content: { padding: 12, gap: 12, paddingBottom: 24 },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  headerTitle: { flexShrink: 1 },
+  headerTitle: { flexShrink: 1, fontSize: 28, lineHeight: 34 },
   pill: {
     minHeight: 44,
     flexDirection: 'row',
@@ -688,6 +795,10 @@ const styles = StyleSheet.create({
   skeletons: { gap: 8 },
   staleBanner: { minHeight: 44, justifyContent: 'center', padding: 10, borderRadius: 12, backgroundColor: Accents.warnSoft },
   planButtons: { flexDirection: 'row', gap: 10 },
+  copyLabel: { alignItems: 'center' },
+  copySub: { ...Type.body, fontSize: 11 },
+  linkRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  linkText: { ...Type.bodyBold, fontSize: 14 },
   clearBtn: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   clearText: { ...Type.bodyBold, fontSize: 14 },
   checkRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },

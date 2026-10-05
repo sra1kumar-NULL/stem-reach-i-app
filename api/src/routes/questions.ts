@@ -1,17 +1,18 @@
 import { Hono } from "hono";
+import { z } from "zod";
 import { and, desc, eq, ilike, ne, sql, type SQL } from "drizzle-orm";
-import { ZodError } from "zod";
 import { questionRevisions, questions, reviewStates, sections, submissions } from "@stemreach/core/db/schema";
 import { requireRole } from "../lib/auth.js";
 import type { AppContext } from "../lib/http.js";
 import { badRequest, conflict, notFound } from "../lib/http.js";
+import { toTeacherQuestionDto } from "../lib/question-dto.js";
+import { parseBody, parseOr400, pgCode, uuidParam } from "../lib/validate.js";
 import { assertCanEditQuestion } from "../lib/question-access.js";
 import {
   RevisionSnapshot,
   applyQuestionEdit,
   finalizeEditable,
   fromSnapshot,
-  pgCode,
   questionInUse,
   type EditableQuestion,
 } from "../lib/question-revisions.js";
@@ -19,7 +20,6 @@ import { isSimilar, normalizeQuestionText, tokenSetSimilarity } from "../lib/tex
 import {
   CreateQuestionRequest,
   isValidIsoDate,
-  DeleteQuestionParams,
   ListQuestionsQuery,
   RestoreRevisionRequest,
   SimilarQuestionsRequest,
@@ -35,46 +35,9 @@ import {
 const DEFAULT_LIMIT = 30;
 const MAX_SIMILAR = 5;
 
-function zodMessage(e: ZodError): string {
-  return e.issues.map((i) => i.message).join("; ");
-}
-
-/** Parses with a Zod schema, mapping validation failures to 400. */
-function parse<T>(schema: { parse(v: unknown): T }, value: unknown): T {
-  try {
-    return schema.parse(value);
-  } catch (e) {
-    if (e instanceof ZodError) throw badRequest(zodMessage(e));
-    throw e;
-  }
-}
-
-function toDto(row: typeof questions.$inferSelect, submissionCount?: number): TeacherQuestionDto {
-  return {
-    id: row.id,
-    section_id: row.sectionId,
-    type: row.qtype,
-    language: row.language,
-    difficulty: row.difficulty,
-    question_text: row.questionText,
-    options: row.options,
-    answer: row.answer,
-    explanation: row.explanation,
-    enabled: row.enabled,
-    created_by: row.createdBy,
-    created_at: row.createdAt.toISOString(),
-    status: row.status ?? "published",
-    edited_at: row.editedAt ? row.editedAt.toISOString() : null,
-    updated_by: row.updatedBy ?? null,
-    correct_option: row.correctOption ?? null,
-    ...(submissionCount !== undefined ? { submission_count: submissionCount } : {}),
-  };
-}
-
 // ── Keyset cursor: base64url("<created_at, microsecond ISO>|<id>") ──────────
 
 const CURSOR_TS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function encodeCursor(ts: string, id: string): string {
   return Buffer.from(`${ts}|${id}`, "utf8").toString("base64url");
@@ -82,7 +45,7 @@ export function encodeCursor(ts: string, id: string): string {
 
 export function decodeCursor(cursor: string): { ts: string; id: string } {
   const [ts, id, ...rest] = Buffer.from(cursor, "base64url").toString("utf8").split("|");
-  if (rest.length > 0 || !ts || !id || !CURSOR_TS.test(ts) || !UUID.test(id)) throw badRequest("invalid cursor");
+  if (rest.length > 0 || !ts || !id || !CURSOR_TS.test(ts) || !z.string().uuid().safeParse(id).success) throw badRequest("invalid cursor");
   return { ts, id };
 }
 
@@ -104,7 +67,7 @@ export function routes(ctx: AppContext): Hono {
   // POST /api/questions — teacher authors a question (teacher role required).
   // created_by is taken from the verified token, never from the body.
   app.post("/", requireRole("teacher"), async (c) => {
-    const body = parse(CreateQuestionRequest, await c.req.json().catch(() => null));
+    const body = await parseBody(c, CreateQuestionRequest);
 
     // FK integrity: the section must exist (chapter/subject hang off it).
     const [section] = await ctx.db
@@ -134,7 +97,7 @@ export function routes(ctx: AppContext): Hono {
         })
         .returning();
       if (!row) throw new Error("insert returned no row");
-      created = toDto(row, 0);
+      created = toTeacherQuestionDto(row, 0);
     } catch (e) {
       // questions_section_text_unique — duplicate text within the section.
       if (pgCode(e, "23505")) throw conflict("a question with this text already exists in this section");
@@ -147,7 +110,7 @@ export function routes(ctx: AppContext): Hono {
 
   // GET /api/questions — filtered, keyset-paginated list (created_at desc, id desc).
   app.get("/", requireRole("teacher"), async (c) => {
-    const query = parse(ListQuestionsQuery, c.req.query());
+    const query = parseOr400(ListQuestionsQuery, c.req.query());
     const limit = query.limit ?? DEFAULT_LIMIT;
 
     const conds: SQL[] = [];
@@ -188,7 +151,7 @@ export function routes(ctx: AppContext): Hono {
     const page = rows.slice(0, limit);
     const last = page[page.length - 1];
     const body: ListQuestionsResponse = {
-      questions: page.map((r) => toDto(r.question, Number(r.submissionCount ?? 0))),
+      questions: page.map((r) => toTeacherQuestionDto(r.question, Number(r.submissionCount ?? 0))),
       next_cursor: rows.length > limit && last ? encodeCursor(last.cursorTs, last.question.id) : null,
     };
     return c.json(body);
@@ -196,7 +159,7 @@ export function routes(ctx: AppContext): Hono {
 
   // GET /api/questions/:id — one question (teachers), with submission_count. Lets the editor open a deep link / reload.
   app.get("/:id", requireRole("teacher"), async (c) => {
-    const { id } = parse(DeleteQuestionParams, { id: c.req.param("id") });
+    const id = uuidParam(c);
     const [row] = await ctx.db
       .select({
         question: questions,
@@ -206,12 +169,12 @@ export function routes(ctx: AppContext): Hono {
       .where(eq(questions.id, id))
       .limit(1);
     if (!row) throw notFound("question not found");
-    return c.json(toDto(row.question, Number(row.submissionCount ?? 0)) satisfies TeacherQuestionDto);
+    return c.json(toTeacherQuestionDto(row.question, Number(row.submissionCount ?? 0)) satisfies TeacherQuestionDto);
   });
 
   // POST /api/questions/similar — advisory near-duplicate check; never blocks a save.
   app.post("/similar", requireRole("teacher"), async (c) => {
-    const body = parse(SimilarQuestionsRequest, await c.req.json().catch(() => null));
+    const body = await parseBody(c, SimilarQuestionsRequest);
 
     const rows = await ctx.db
       .select({ id: questions.id, sectionId: questions.sectionId, questionText: questions.questionText })
@@ -237,8 +200,8 @@ export function routes(ctx: AppContext): Hono {
 
   // PATCH /api/questions/:id — partial update, merged with the stored row and re-validated.
   app.patch("/:id", requireRole("teacher"), async (c) => {
-    const { id } = parse(DeleteQuestionParams, { id: c.req.param("id") });
-    const patch = parse(UpdateQuestionRequest, await c.req.json().catch(() => null));
+    const id = uuidParam(c);
+    const patch = await parseBody(c, UpdateQuestionRequest);
 
     const build = (cur: EditableQuestion): EditableQuestion => {
       const type = patch.type ?? cur.qtype;
@@ -262,7 +225,7 @@ export function routes(ctx: AppContext): Hono {
 
     try {
       const { row, submissionCount } = await applyQuestionEdit(ctx.db, { id, user: c.var.user, build });
-      return c.json(toDto(row, submissionCount) satisfies TeacherQuestionDto);
+      return c.json(toTeacherQuestionDto(row, submissionCount) satisfies TeacherQuestionDto);
     } catch (e) {
       if (pgCode(e, "23505")) throw conflict("a question with this text already exists in this section");
       throw e;
@@ -271,7 +234,7 @@ export function routes(ctx: AppContext): Hono {
 
   // GET /api/questions/:id/revisions — pre-edit snapshots, newest first.
   app.get("/:id/revisions", requireRole("teacher"), async (c) => {
-    const { id } = parse(DeleteQuestionParams, { id: c.req.param("id") });
+    const id = uuidParam(c);
     const [question] = await ctx.db.select({ id: questions.id }).from(questions).where(eq(questions.id, id)).limit(1);
     if (!question) throw notFound("question not found");
 
@@ -294,8 +257,8 @@ export function routes(ctx: AppContext): Hono {
 
   // POST /api/questions/:id/restore — re-applies a snapshot as a new edit (new revision, same in-use rule).
   app.post("/:id/restore", requireRole("teacher"), async (c) => {
-    const { id } = parse(DeleteQuestionParams, { id: c.req.param("id") });
-    const { revision_no } = parse(RestoreRevisionRequest, await c.req.json().catch(() => null));
+    const id = uuidParam(c);
+    const { revision_no } = await parseBody(c, RestoreRevisionRequest);
 
     const [rev] = await ctx.db
       .select()
@@ -310,7 +273,7 @@ export function routes(ctx: AppContext): Hono {
 
     try {
       const { row, submissionCount } = await applyQuestionEdit(ctx.db, { id, user: c.var.user, build: () => target });
-      return c.json(toDto(row, submissionCount) satisfies TeacherQuestionDto);
+      return c.json(toTeacherQuestionDto(row, submissionCount) satisfies TeacherQuestionDto);
     } catch (e) {
       if (pgCode(e, "23505")) throw conflict("a question with this text already exists in this section");
       throw e;
@@ -319,10 +282,9 @@ export function routes(ctx: AppContext): Hono {
 
   // DELETE /api/questions/:id — any teacher, but only while no student work references it.
   app.delete("/:id", requireRole("teacher"), async (c) => {
-    // The schema is an object ({ id }); parsing the bare string always failed (400 for every id).
-    const params = parse(DeleteQuestionParams, { id: c.req.param("id") });
+    const id = uuidParam(c);
 
-    const [question] = await ctx.db.select().from(questions).where(eq(questions.id, params.id)).limit(1);
+    const [question] = await ctx.db.select().from(questions).where(eq(questions.id, id)).limit(1);
     if (!question) throw notFound("question not found");
     assertCanEditQuestion(c.var.user, question);
 

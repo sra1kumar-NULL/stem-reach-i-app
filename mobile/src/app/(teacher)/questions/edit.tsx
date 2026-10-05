@@ -19,16 +19,19 @@ import { cachedQuestion, createQuestion, deleteQuestion, findQuestion, findSimil
 import { ConfirmSheet } from '@/components/confirm-sheet';
 import { ErrorState } from '@/components/error-state';
 import { ChipRow } from '@/components/question-editor/chip';
+import { MenuItem, MenuNote, PopoverMenu } from '@/components/question-editor/popover-menu';
 import { PreviewPanel } from '@/components/question-editor/preview-panel';
 import { RevisionsSheet } from '@/components/question-editor/revisions-sheet';
 import { SectionButton, SectionPicker, sectionLabel } from '@/components/question-editor/section-picker';
 import { SimilarBanner, type SimilarItem } from '@/components/question-editor/similar-banner';
 import { SymbolField } from '@/components/question-editor/symbol-field';
 import { SymbolToolbar } from '@/components/question-editor/symbol-toolbar';
+import { Button, ButtonText } from '@/components/ui/button';
 import { useToast } from '@/components/toast';
 import { Accents, onAccent, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { toFriendlyError } from '@/lib/friendly-error';
+import { syllabusStore } from '@/lib/syllabus-store';
 import {
   buildCreatePayload,
   buildPatchPayload,
@@ -96,7 +99,10 @@ export default function QuestionEditorScreen() {
   const [busy, setBusy] = useState<null | 'save' | 'another' | 'archive' | 'delete' | 'copy'>(null);
 
   const [symbolsOpen, setSymbolsOpen] = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(true);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [archiveInsteadOpen, setArchiveInsteadOpen] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
   const [focused, setFocused] = useState<FieldKey>('text');
   const [selOverride, setSelOverride] = useState<{ key: FieldKey; selection: Selection } | null>(null);
   const refs = useRef<Partial<Record<FieldKey, TextInput | null>>>({});
@@ -112,7 +118,8 @@ export default function QuestionEditorScreen() {
   // ── topics ────────────────────────────────────────────────────────────────
   const loadSyllabus = useCallback(() => {
     setSyllabusError(false);
-    getSyllabus()
+    syllabusStore
+      .get(getSyllabus)
       .then(setSyllabus)
       .catch(() => setSyllabusError(true));
   }, []);
@@ -185,6 +192,27 @@ export default function QuestionEditorScreen() {
     if (k === 'explanation') return errors.explanation;
     return errors.options?.[Number(k.slice(3))];
   };
+
+  /** Names of the fields that currently block saving (drives the in-page banner). */
+  const problemLabels = useMemo(() => {
+    const out: string[] = [];
+    if (errors.section_id) out.push('Topic');
+    if (errors.text) out.push('Question');
+    errors.options?.forEach((m, i) => {
+      if (m) out.push(FIELD_LABEL[`opt${i}` as FieldKey]);
+    });
+    if (errors.correct) out.push('Correct option');
+    if (errors.answer) out.push('Answer');
+    if (errors.explanation) out.push('Explanation');
+    return out;
+  }, [errors]);
+  const serverFieldError = Object.entries(serverErrors).find(([k, v]) => k !== 'general' && v)?.[1];
+  const bannerText =
+    showErrors && problemLabels.length > 0
+      ? `${problemLabels.length === 1 ? '1 thing needs' : `${problemLabels.length} things need`} fixing before you can save: ${problemLabels.join(', ')}.`
+      : serverFieldError
+        ? 'The server did not accept this question. See the highlighted field.'
+        : null;
 
   const update = (patch: Partial<EditorForm>) => {
     setForm((f) => ({ ...f, ...patch }));
@@ -287,7 +315,7 @@ export default function QuestionEditorScreen() {
       const m = mapServerError(e.status, e.code, e.message);
       if (m.inUse) setInUseFlag(true);
       setServerErrors({ [m.field]: m.message });
-      showToast(m.inUse ? m.message : 'The server rejected this question. See the highlighted field.', 'error');
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
       return;
     }
     showToast(toFriendlyError(e, 'Could not save. Please try again.'), 'error');
@@ -313,7 +341,7 @@ export default function QuestionEditorScreen() {
     if (busy) return;
     setShowErrors(true);
     if (hasErrors(errors)) {
-      showToast('Please fix the highlighted fields.', 'error');
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
       const first = firstErrorField(errors);
       if (first && first !== 'correct' && first !== 'section_id') refs.current[first]?.focus();
       return;
@@ -390,7 +418,7 @@ export default function QuestionEditorScreen() {
       setDeleteOpen(false);
       if (e instanceof ApiError && e.status === 409) {
         setInUseFlag(true);
-        showToast('Students have already answered this, so it cannot be deleted. Archive it instead.', 'error');
+        setArchiveInsteadOpen(true);
       } else {
         showToast(toFriendlyError(e, 'Could not delete the question.'), 'error');
       }
@@ -431,14 +459,26 @@ export default function QuestionEditorScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.background }]} edges={['top', 'left', 'right', 'bottom']}>
-      <TopBar title={title} onBack={goBack} />
+      <TopBar title={title} onBack={goBack} onMenu={id ? () => setMenuOpen(true) : undefined} menuOpen={menuOpen} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView
+          ref={scrollRef}
           style={{ flex: 1 }}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         >
+          {bannerText ? (
+            <View
+              accessibilityRole="alert"
+              accessibilityLiveRegion="assertive"
+              style={[styles.errorBanner, { borderColor: Accents.danger, backgroundColor: Accents.dangerSoft }]}
+            >
+              <Ionicons name="alert-circle-outline" size={20} color={theme.dangerText} />
+              <Text style={[Type.bodySemi, { color: theme.dangerText, flex: 1, fontSize: 14 }]}>{bannerText}</Text>
+            </View>
+          ) : null}
+
           {locked ? (
             <View style={[styles.notice, { borderColor: Accents.warn, backgroundColor: Accents.warnSoft }]} accessibilityRole="alert">
               <View style={styles.noticeHead}>
@@ -472,7 +512,7 @@ export default function QuestionEditorScreen() {
 
           {archived ? (
             <Text accessibilityRole="text" style={[Type.bodySemi, styles.banner, { color: theme.text, backgroundColor: theme.backgroundSelected }]}>
-              This question is archived. Students do not see it. Restore it from More actions.
+              This question is archived. Students do not see it. Restore it from the ... menu at the top.
             </Text>
           ) : null}
 
@@ -487,7 +527,7 @@ export default function QuestionEditorScreen() {
             </Pressable>
           ) : (
             <SectionButton
-              label="Topic"
+              label="Topic (required)"
               syllabus={syllabus}
               value={form.section_id || undefined}
               placeholder="Choose a topic"
@@ -508,7 +548,7 @@ export default function QuestionEditorScreen() {
           />
 
           <SymbolField
-            label="Question"
+            label="Question (required)"
             value={form.text}
             onChangeText={(text) => update({ text })}
             multiline
@@ -520,7 +560,7 @@ export default function QuestionEditorScreen() {
 
           {form.type === 'mcq' ? (
             <View style={styles.optionsBox}>
-              <Text style={[Type.bodyBold, { color: theme.textSecondary, fontSize: 13 }]}>Options (tap the circle to mark the correct one)</Text>
+              <Text style={[Type.bodyBold, { color: theme.textSecondary, fontSize: 13 }]}>Options (required). Tap the circle to mark the correct one.</Text>
               {form.options.map((opt, i) => {
                 const k = `opt${i}` as FieldKey;
                 const on = form.correct === i;
@@ -563,7 +603,7 @@ export default function QuestionEditorScreen() {
             </View>
           ) : (
             <SymbolField
-              label="Answer (back of the card)"
+              label="Answer (required, back of the card)"
               value={form.answer}
               onChangeText={(answer) => update({ answer })}
               multiline
@@ -574,12 +614,13 @@ export default function QuestionEditorScreen() {
           )}
 
           <SymbolField
-            label="Explanation"
+            label="Explanation (required)"
+            helper="Students read this after answering."
             value={form.explanation}
             onChangeText={(explanation) => update({ explanation })}
             multiline
             minLines={2}
-            placeholder="Why is this the answer? Students read this after answering."
+            placeholder="Why is this the answer?"
             {...fieldProps('explanation')}
           />
 
@@ -625,29 +666,6 @@ export default function QuestionEditorScreen() {
           </Pressable>
           {previewOpen ? <PreviewPanel form={form} sectionName={secName} /> : null}
 
-          {id ? (
-            <View style={[styles.moreBox, { borderColor: Accents.border }]}>
-              <Text accessibilityRole="header" style={[Type.bodyBold, { color: theme.textSecondary, fontSize: 13 }]}>
-                More actions
-              </Text>
-              <View style={styles.moreRow}>
-                <MoreBtn icon="copy-outline" label="Duplicate" onPress={duplicate} />
-                <MoreBtn icon="time-outline" label="History" onPress={() => setHistoryOpen(true)} />
-                <MoreBtn
-                  icon={archived ? 'arrow-undo-outline' : 'archive-outline'}
-                  label={archived ? 'Restore' : 'Archive'}
-                  onPress={() => setArchived(!archived)}
-                  busy={busy === 'archive'}
-                />
-                {canDelete ? <MoreBtn icon="trash-outline" label="Delete" danger onPress={() => setDeleteOpen(true)} /> : null}
-              </View>
-              {!canDelete ? (
-                <Text style={[Type.body, { color: theme.textSecondary, fontSize: 12 }]}>
-                  Students have answered this, so it can only be archived, not deleted.
-                </Text>
-              ) : null}
-            </View>
-          ) : null}
         </ScrollView>
 
         <View style={[styles.dock, { backgroundColor: theme.background, borderTopColor: Accents.border }]}>
@@ -667,28 +685,31 @@ export default function QuestionEditorScreen() {
             </Text>
           </View>
           <View style={styles.actionRow}>
-            <Pressable
-              onPress={() => save(true)}
-              disabled={busy != null}
-              accessibilityRole="button"
-              accessibilityLabel="Save and add another"
-              accessibilityState={{ disabled: busy != null, busy: busy === 'another' }}
-              style={({ pressed }) => [styles.outlineBtn, { flex: 1, borderColor: Accents.primary }, busy != null && { opacity: 0.5 }, pressed && { opacity: 0.7 }]}
-            >
-              {busy === 'another' ? <ActivityIndicator color={Accents.primary} /> : null}
-              <Text style={[Type.bodyBold, { color: theme.primaryText, textAlign: 'center' }]}>Save & add another</Text>
-            </Pressable>
-            <Pressable
+            {!id ? (
+              <Button
+                variant="outline"
+                onPress={() => save(true)}
+                disabled={busy != null}
+                accessibilityLabel="Save and add another"
+                accessibilityHint="Saves and opens a blank form for another question"
+                accessibilityState={{ disabled: busy != null, busy: busy === 'another' }}
+                className={`min-h-11 flex-1 rounded-xl ${busy != null ? 'opacity-50' : ''}`}
+              >
+                {busy === 'another' ? <ActivityIndicator color={Accents.primary} /> : null}
+                <ButtonText style={Type.bodyBold}>Save &amp; add another</ButtonText>
+              </Button>
+            ) : null}
+            <Button
+              variant="default"
               onPress={() => save(false)}
               disabled={busy != null}
-              accessibilityRole="button"
               accessibilityLabel="Save"
               accessibilityState={{ disabled: busy != null, busy: busy === 'save' }}
-              style={({ pressed }) => [styles.saveBtn, { backgroundColor: Accents.primary }, busy != null && { opacity: 0.5 }, pressed && { opacity: 0.8 }]}
+              className={`min-h-11 rounded-xl ${id ? 'flex-1' : ''} ${busy != null ? 'opacity-50' : ''}`}
             >
               {busy === 'save' ? <ActivityIndicator color={onAccent(Accents.primary)} /> : null}
-              <Text style={[Type.bodyBold, { color: onAccent(Accents.primary), fontSize: 16 }]}>Save</Text>
-            </Pressable>
+              <ButtonText style={Type.bodyBold}>Save</ButtonText>
+            </Button>
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -700,6 +721,7 @@ export default function QuestionEditorScreen() {
         title="Discard your changes?"
         message="You have unsaved changes to this question. If you leave now they are lost."
         confirmLabel="Discard"
+        destructive
         cancelLabel="Keep editing"
         onConfirm={confirmDiscard}
         onCancel={() => setLeaveOpen(false)}
@@ -709,16 +731,42 @@ export default function QuestionEditorScreen() {
         title="Delete this question?"
         message="This cannot be undone. If students have answered it, archive it instead."
         confirmLabel="Delete"
+        destructive
         loading={busy === 'delete'}
         onConfirm={doDelete}
         onCancel={() => setDeleteOpen(false)}
       />
+      <ConfirmSheet
+        visible={archiveInsteadOpen}
+        title="This question cannot be deleted"
+        message="Students have already answered it, so deleting would erase their results. Archive it instead: students stop seeing it and the results stay."
+        confirmLabel={archived ? 'Keep archived' : 'Archive instead'}
+        cancelLabel="Cancel"
+        loading={busy === 'archive'}
+        onConfirm={async () => {
+          if (!archived) await setArchived(true);
+          setArchiveInsteadOpen(false);
+        }}
+        onCancel={() => setArchiveInsteadOpen(false)}
+      />
+      {id ? (
+        <ActionsMenu
+          visible={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          archived={archived}
+          canDelete={canDelete}
+          onDuplicate={duplicate}
+          onHistory={() => setHistoryOpen(true)}
+          onArchive={() => void setArchived(!archived)}
+          onDelete={() => setDeleteOpen(true)}
+        />
+      ) : null}
       {id ? <RevisionsSheet visible={historyOpen} questionId={id} onClose={() => setHistoryOpen(false)} onRestore={doRestore} /> : null}
     </SafeAreaView>
   );
 }
 
-function TopBar({ title, onBack }: { title: string; onBack: () => void }) {
+function TopBar({ title, onBack, onMenu, menuOpen }: { title: string; onBack: () => void; onMenu?: () => void; menuOpen?: boolean }) {
   const theme = useTheme();
   return (
     <View style={styles.topBar}>
@@ -729,25 +777,57 @@ function TopBar({ title, onBack }: { title: string; onBack: () => void }) {
       <Text accessibilityRole="header" numberOfLines={1} style={[Type.heading, styles.topTitle, { color: theme.text }]}>
         {title}
       </Text>
+      {onMenu ? (
+        <Pressable
+          onPress={onMenu}
+          accessibilityRole="button"
+          accessibilityLabel="More actions"
+          accessibilityHint="Duplicate, history, archive or delete"
+          accessibilityState={{ expanded: !!menuOpen }}
+          style={({ pressed }) => [styles.menuBtn, pressed && { opacity: 0.6 }]}
+        >
+          <Ionicons name="ellipsis-horizontal" size={24} color={theme.text} />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
 
-function MoreBtn({ icon, label, onPress, danger, busy }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void; danger?: boolean; busy?: boolean }) {
-  const theme = useTheme();
-  const color = danger ? theme.dangerText : theme.primaryText;
+/** Header "..." menu: Duplicate, History, Archive / Restore, Delete. Items are buttons so assistive tech and tests find them by name. */
+function ActionsMenu({
+  visible,
+  onClose,
+  archived,
+  canDelete,
+  onDuplicate,
+  onHistory,
+  onArchive,
+  onDelete,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  archived: boolean;
+  canDelete: boolean;
+  onDuplicate: () => void;
+  onHistory: () => void;
+  onArchive: () => void;
+  onDelete: () => void;
+}) {
+  const run = (fn: () => void) => () => {
+    onClose();
+    fn();
+  };
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={busy}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ busy: !!busy }}
-      style={({ pressed }) => [styles.moreBtn, { borderColor: danger ? Accents.danger : Accents.border }, pressed && { opacity: 0.6 }]}
-    >
-      {busy ? <ActivityIndicator color={color} /> : <Ionicons name={icon} size={18} color={color} />}
-      <Text style={[Type.bodyBold, { color, fontSize: 14 }]}>{label}</Text>
-    </Pressable>
+    <PopoverMenu visible={visible} onClose={onClose}>
+      <MenuItem icon="copy-outline" label="Duplicate" onPress={run(onDuplicate)} />
+      <MenuItem icon="time-outline" label="History" onPress={run(onHistory)} />
+      <MenuItem icon={archived ? 'arrow-undo-outline' : 'archive-outline'} label={archived ? 'Restore' : 'Archive'} onPress={run(onArchive)} />
+      {canDelete ? (
+        <MenuItem icon="trash-outline" label="Delete" danger onPress={run(onDelete)} />
+      ) : (
+        <MenuNote>Students have answered this, so it can only be archived, not deleted.</MenuNote>
+      )}
+    </PopoverMenu>
   );
 }
 
@@ -765,9 +845,8 @@ const styles = StyleSheet.create({
   radioHit: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   radio: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   sectionToggle: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  moreBox: { borderWidth: 1, borderRadius: 14, padding: 12, gap: 10 },
-  moreRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  moreBtn: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, borderWidth: 1, borderRadius: 999 },
+  errorBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, borderWidth: 1.5, borderRadius: 12, padding: 12 },
+  menuBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   dock: { borderTopWidth: 1, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 8, gap: 8, width: '100%', maxWidth: 760, alignSelf: 'center' },
   actionRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   symBtn: { width: 44, height: 44, borderRadius: 12, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },

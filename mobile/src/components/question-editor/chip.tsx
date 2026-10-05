@@ -1,6 +1,7 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Accents, Type } from '@/constants/theme';
+import { Accents, onAccent, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 interface ChipProps {
@@ -12,7 +13,7 @@ interface ChipProps {
   accessibilityLabel?: string;
 }
 
-/** 44pt single-choice pill. */
+/** 44pt single-choice pill. Selected = solid primary fill, contrasting text and a check (not colour alone). */
 export function Chip({ label, selected, onPress, disabled, accessibilityLabel }: ChipProps) {
   const theme = useTheme();
   return (
@@ -24,12 +25,13 @@ export function Chip({ label, selected, onPress, disabled, accessibilityLabel }:
       accessibilityState={{ selected, checked: selected, disabled: !!disabled }}
       style={({ pressed }) => [
         styles.chip,
-        { borderColor: selected ? Accents.primary : Accents.border, backgroundColor: selected ? Accents.primarySoft : 'transparent' },
+        { borderColor: selected ? Accents.primary : Accents.border, backgroundColor: selected ? Accents.primary : 'transparent' },
         disabled && { opacity: 0.5 },
         pressed && { opacity: 0.7 },
       ]}
     >
-      <Text style={[Type.bodyBold, styles.text, { color: selected ? theme.primaryText : theme.text }]}>{label}</Text>
+      {selected ? <Ionicons name="checkmark" size={16} color={onAccent(Accents.primary)} /> : null}
+      <Text style={[Type.bodyBold, styles.text, { color: selected ? onAccent(Accents.primary) : theme.text }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -74,6 +76,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 999,
     borderWidth: 1.5,
+    flexDirection: 'row',
+    gap: 4,
     alignItems: 'center',
     justifyContent: 'center',
   },

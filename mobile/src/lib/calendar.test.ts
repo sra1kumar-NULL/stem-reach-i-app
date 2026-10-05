@@ -139,3 +139,11 @@ test('tintFromPct', () => {
   assert.equal(tintFromPct(1), 0.8);
   assert.equal(tintFromPct(5), 0.8);
 });
+
+test('formatRangeShort, partialCopyMessage, isFresh', async () => {
+  const m = await import('./calendar.ts');
+  assert.equal(m.formatRangeShort('2026-09-27', '2026-10-03'), '27 Sep - 3 Oct');
+  assert.equal(m.partialCopyMessage(['2026-10-05'], ['2026-10-06', '2026-10-07']), 'Copied 2026-10-05. Could not copy 2026-10-06, 2026-10-07 - try again for those days.');
+  assert.equal(m.isFresh(1000, 1500, 600), true);
+  assert.equal(m.isFresh(1000, 1600, 600), false);
+});

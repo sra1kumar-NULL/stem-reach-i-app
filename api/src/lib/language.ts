@@ -7,12 +7,6 @@ export function normalizeLanguagePref(pref: string | null | undefined): Question
   return pref === "kn" || pref === "both" ? pref : "en";
 }
 
-/** Which question languages a preference serves. `both` = every language. */
-export function languagesFor(pref: string | null | undefined): ("en" | "kn")[] {
-  const p = normalizeLanguagePref(pref);
-  return p === "both" ? ["en", "kn"] : [p];
-}
-
 /** Extra where-condition for student-facing question queries; undefined (no filter) for `both`. */
 export function languageFilterFor(pref: string | null | undefined): SQL | undefined {
   const p = normalizeLanguagePref(pref);

@@ -1,13 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import type { ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
+import { useState, type ReactNode } from 'react';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, type TextInputProps } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Box } from '@/components/ui/box';
 import { Heading } from '@/components/ui/heading';
+import { Input, InputField } from '@/components/ui/input';
 import { Text } from '@/components/ui/text';
-import { Fonts } from '@/constants/theme';
+import { Fonts, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 interface Props {
@@ -47,4 +48,56 @@ export function AuthShell({ title, subtitle, icon = 'lock-closed', children }: P
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   inner: { flexGrow: 1, justifyContent: 'center', padding: 24, gap: 12 },
+  eye: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: -8 },
 });
+
+interface FieldProps extends Omit<TextInputProps, 'style' | 'secureTextEntry'> {
+  /** Visible label above the input (14/700). Also the accessible name unless `accessibilityLabel` is given. */
+  label: string;
+  /** Password field: hidden by default with a show/hide eye toggle. */
+  password?: boolean;
+  /** Extra line under the label, e.g. "At least 8 characters". */
+  hint?: string;
+}
+
+/** Labelled text input shared by every account screen. The placeholder stays (tests and hints rely on it). */
+export function AuthField({ label, password = false, hint, accessibilityLabel, ...rest }: FieldProps) {
+  const theme = useTheme();
+  const [shown, setShown] = useState(false);
+  return (
+    <Box className="gap-1.5">
+      <Text className="text-foreground" style={[Type.bodyBold, { fontSize: 14 }]} accessible={false}>
+        {label}
+      </Text>
+      {hint ? (
+        <Text className="text-muted-foreground" style={[Type.body, { fontSize: 12 }]} accessible={false}>
+          {hint}
+        </Text>
+      ) : null}
+      <Input className="border border-border rounded-xl bg-background">
+        <InputField
+          {...rest}
+          accessibilityLabel={accessibilityLabel ?? label}
+          placeholderTextColor={theme.textSecondary}
+          secureTextEntry={password && !shown}
+          autoCapitalize={rest.autoCapitalize ?? 'none'}
+          autoCorrect={rest.autoCorrect ?? false}
+          className="px-4 py-3 text-base"
+          style={{ color: theme.text, fontFamily: Fonts.sans }}
+        />
+        {password ? (
+          <Pressable
+            onPress={() => setShown((v) => !v)}
+            accessibilityRole="button"
+            accessibilityLabel={shown ? 'Hide password' : 'Show password'}
+            accessibilityState={{ selected: shown }}
+            hitSlop={4}
+            style={({ pressed }) => [styles.eye, pressed && { opacity: 0.6 }]}
+          >
+            <Ionicons name={shown ? 'eye-off-outline' : 'eye-outline'} size={22} color={theme.textSecondary} />
+          </Pressable>
+        ) : null}
+      </Input>
+    </Box>
+  );
+}

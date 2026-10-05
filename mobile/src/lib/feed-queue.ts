@@ -94,3 +94,13 @@ export function nextIndex(q: FeedQueue, from: number): number {
   }
   return -1;
 }
+
+/**
+ * Card label that agrees with the header counter ("3/15"): the card you are on
+ * is `answered + 1` of the daily target. Reviews can push past the target, in
+ * which case the card is labelled as extra practice instead of "16 of 15".
+ */
+export function positionLabel(position: number, total: number): string {
+  if (total <= 0 || position > total) return 'Extra practice';
+  return `Question ${Math.max(position, 1)} of ${total}`;
+}

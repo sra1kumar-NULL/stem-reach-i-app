@@ -218,3 +218,20 @@ export function tintFromPct(pct: number | null | undefined): number | undefined 
   if (pct == null) return undefined;
   return 0.18 + 0.62 * Math.min(1, Math.max(0, pct));
 }
+
+/** "27 Sep - 3 Oct" for the day range copy-last-week reads from. */
+export function formatRangeShort(from: string, to: string): string {
+  const short = (d: string) => `${parseIso(d).d} ${MONTH_NAMES[parseIso(d).m - 1].slice(0, 3)}`;
+  return `${short(from)} - ${short(to)}`;
+}
+
+/** Toast copy when a multi-call copy/plan fails part-way: say exactly which dates went through. */
+export function partialCopyMessage(copied: string[], failed: string[], fmt: (d: string) => string = (d) => d): string {
+  const list = (ds: string[]) => ds.map(fmt).join(', ');
+  return `Copied ${list(copied)}. Could not copy ${list(failed)} - try again for those days.`;
+}
+
+/** A cached value is fresh while younger than `ttlMs`. */
+export function isFresh(savedAt: number, now: number, ttlMs: number): boolean {
+  return now - savedAt < ttlMs;
+}

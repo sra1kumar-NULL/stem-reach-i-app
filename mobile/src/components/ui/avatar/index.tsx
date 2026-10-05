@@ -15,11 +15,11 @@ const UIAvatar = createAvatar({
 });
 
 const avatarStyle = tva({
-  base: 'relative flex h-12 w-12 shrink-0 rounded-full bg-muted items-center justify-center group-[.avatar-group]/avatar-group:-ml-2.5',
+  base: 'relative flex h-12 w-12 shrink-0 rounded-full bg-primary items-center justify-center group-[.avatar-group]/avatar-group:-ml-2.5',
 });
 
 const avatarFallbackTextStyle = tva({
-  base: 'text-foreground text-xs font-medium text-transform:uppercase',
+  base: 'text-primary-foreground text-xs font-bold text-transform:uppercase',
 });
 
 const avatarGroupStyle = tva({

@@ -6,11 +6,6 @@ import type { AuthUser } from "./auth.js";
 import { HttpError, badRequest, notFound, type AppContext } from "./http.js";
 import { assertCanEditQuestion } from "./question-access.js";
 
-/** Postgres error-code check (23505 unique_violation, 23503 foreign_key_violation). */
-export function pgCode(e: unknown, code: string): boolean {
-  return typeof e === "object" && e !== null && (e as { code?: string }).code === code;
-}
-
 export function questionInUse(message: string): HttpError {
   return new HttpError(409, "question_in_use", message);
 }

@@ -22,7 +22,21 @@ export type QuestionStatus = z.infer<typeof QUESTION_STATUS>;
 export const QUESTION_LANGUAGE_PREF = z.enum(["en", "kn", "both"]);
 export type QuestionLanguagePref = z.infer<typeof QUESTION_LANGUAGE_PREF>;
 
-export const ISO_DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD");
+/** True when `YYYY-MM-DD` is a real calendar day (rejects 2026-02-30, 2026-13-01). Inlined: core source files do not import each other. */
+function isRealIsoDate(v: string): boolean {
+  const [y, m, d] = v.split("-").map(Number) as [number, number, number];
+  const t = new Date(Date.UTC(y, m - 1, d));
+  return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d;
+}
+
+export const ISO_DATE = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD")
+  .refine(isRealIsoDate, "not a real calendar date");
+
+/** Postgres text cannot hold NUL (\u0000); rejecting it here turns a database 500 into a clear 400. */
+const noNul = (v: string) => !v.includes("\u0000");
+const NUL_MSG = "must not contain NUL characters";
 
 export const SUBJECT = z.enum(["physics", "chemistry", "biology", "general"]);
 export type Subject = z.infer<typeof SUBJECT>;
@@ -38,11 +52,11 @@ export const AuthoredQuestion = z.object({
   type: QUESTION_TYPE,
   difficulty: DIFFICULTY.default("medium"),
   language: LANGUAGE.default("en"),
-  text: z.string().min(1).max(500),
-  options: z.array(z.string().min(1).max(200)).length(4).optional(),
+  text: z.string().min(1).max(500).refine(noNul, NUL_MSG),
+  options: z.array(z.string().min(1).max(200).refine(noNul, NUL_MSG)).length(4).optional(),
   correct: z.number().int().min(0).max(3).optional(),
-  answer: z.string().min(1).max(1000).optional(),
-  explanation: z.string().min(1).max(1000),
+  answer: z.string().min(1).max(1000).refine(noNul, NUL_MSG).optional(),
+  explanation: z.string().min(1).max(1000).refine(noNul, NUL_MSG),
 });
 export type AuthoredQuestion = z.infer<typeof AuthoredQuestion>;
 
@@ -154,6 +168,9 @@ export type SubmissionRequest = z.infer<typeof SubmissionRequest>;
 export const ActivateRequest = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   section_ids: z.array(z.string().uuid()).min(1),
+  /** Optional list of profiles.class_section values to restrict this activation to.
+   *  When absent or empty the activation is unrestricted (all students). */
+  target_cohorts: z.array(z.string().trim().min(1).max(20).refine(noNul, NUL_MSG)).max(50).optional(),
 });
 export type ActivateRequest = z.infer<typeof ActivateRequest>;
 
@@ -177,7 +194,7 @@ export const ListQuestionsQuery = z.object({
   mine: z.enum(["true", "false"]).optional(),
   // ── Round 2 filters (all optional) ──
   /** Case-insensitive substring match on the question text. */
-  q: z.string().trim().min(1).max(100).optional(),
+  q: z.string().trim().min(1).max(100).refine(noNul, NUL_MSG).optional(),
   type: QUESTION_TYPE.optional(),
   difficulty: DIFFICULTY.optional(),
   language: LANGUAGE.optional(),
@@ -243,11 +260,11 @@ export const MeResponse = z.object({
 export type MeResponse = z.infer<typeof MeResponse>;
 
 export const SignupRequest = z.object({
-  full_name: z.string().min(1, "name is required").max(80),
+  full_name: z.string().min(1, "name is required").max(80).refine(noNul, NUL_MSG),
   email: z.string().email("enter a valid email"),
   password: z.string().min(8, "password must be at least 8 characters"),
   role: ROLE,
-  class_section: z.string().trim().min(1).max(20).optional(),
+  class_section: z.string().trim().min(1).max(20).refine(noNul, NUL_MSG).optional(),
   /**
    * Required by the API when role === "teacher" (checked against the server's
    * TEACHER_INVITE_CODE). Optional in the schema so the contract stays
@@ -291,6 +308,8 @@ export const ActivationResponse = z.object({
   sections: z.array(
     z.object({ id: z.string().uuid(), section_no: z.string(), name: z.string(), question_count: z.number().int() }),
   ),
+  /** Optional so older API/app builds stay compatible. Empty array = unrestricted. */
+  target_cohorts: z.array(z.string()).optional(),
 });
 export type ActivationResponse = z.infer<typeof ActivationResponse>;
 
@@ -344,7 +363,7 @@ export type OkResponse = z.infer<typeof OkResponse>;
 /** PATCH /api/me — name and question language only. role/id/class are never accepted. */
 export const UpdateMeRequest = z
   .object({
-    full_name: z.string().trim().min(1).max(80).optional(),
+    full_name: z.string().trim().min(1).max(80).refine(noNul, NUL_MSG).optional(),
     question_language: QUESTION_LANGUAGE_PREF.optional(),
   })
   .strict()
@@ -382,7 +401,7 @@ export type UpdateQuestionRequest = z.infer<typeof UpdateQuestionRequest>;
 /** POST /api/questions/similar — advisory near-duplicate check (never blocks a save). */
 export const SimilarQuestionsRequest = z.object({
   section_id: z.string().uuid(),
-  text: z.string().trim().min(1).max(500),
+  text: z.string().trim().min(1).max(500).refine(noNul, NUL_MSG),
   /** Ignore this question (when editing it). */
   exclude_id: z.string().uuid().optional(),
 });
@@ -416,14 +435,14 @@ export const ChapterDto = z.object({
 export type ChapterDto = z.infer<typeof ChapterDto>;
 export const CreateChapterRequest = z.object({
   ncert_no: z.number().int().min(1).max(999),
-  name: z.string().trim().min(1).max(120),
+  name: z.string().trim().min(1).max(120).refine(noNul, NUL_MSG),
   subject: SUBJECT,
 });
 export type CreateChapterRequest = z.infer<typeof CreateChapterRequest>;
 export const UpdateChapterRequest = z
   .object({
     ncert_no: z.number().int().min(1).max(999).optional(),
-    name: z.string().trim().min(1).max(120).optional(),
+    name: z.string().trim().min(1).max(120).refine(noNul, NUL_MSG).optional(),
     subject: SUBJECT.optional(),
   })
   .strict()
@@ -440,14 +459,14 @@ export const SectionDetailDto = z.object({
 export type SectionDetailDto = z.infer<typeof SectionDetailDto>;
 export const CreateSectionRequest = z.object({
   chapter_id: z.string().uuid(),
-  section_no: z.string().trim().min(1).max(20),
-  name: z.string().trim().min(1).max(120),
+  section_no: z.string().trim().min(1).max(20).refine(noNul, NUL_MSG),
+  name: z.string().trim().min(1).max(120).refine(noNul, NUL_MSG),
 });
 export type CreateSectionRequest = z.infer<typeof CreateSectionRequest>;
 export const UpdateSectionRequest = z
   .object({
-    section_no: z.string().trim().min(1).max(20).optional(),
-    name: z.string().trim().min(1).max(120).optional(),
+    section_no: z.string().trim().min(1).max(20).refine(noNul, NUL_MSG).optional(),
+    name: z.string().trim().min(1).max(120).refine(noNul, NUL_MSG).optional(),
     sort_order: z.number().int().min(0).max(10000).optional(),
   })
   .strict()
@@ -540,7 +559,12 @@ export const ActivationRangeQuery = z.object({ from: ISO_DATE, to: ISO_DATE });
 export type ActivationRangeQuery = z.infer<typeof ActivationRangeQuery>;
 export const ActivationRangeResponse = z.object({
   activations: z.array(
-    z.object({ date: ISO_DATE, daily_set_id: z.string().uuid(), sections: z.array(ActivatedSectionDto) }),
+    z.object({
+      date: ISO_DATE,
+      daily_set_id: z.string().uuid(),
+      sections: z.array(ActivatedSectionDto),
+      target_cohorts: z.array(z.string()).optional(),
+    }),
   ),
 });
 export type ActivationRangeResponse = z.infer<typeof ActivationRangeResponse>;
@@ -548,6 +572,7 @@ export type ActivationRangeResponse = z.infer<typeof ActivationRangeResponse>;
 export const PlanActivationsRequest = z.object({
   dates: z.array(ISO_DATE).min(1).max(31),
   section_ids: z.array(z.string().uuid()).min(1).max(50),
+  target_cohorts: z.array(z.string().trim().min(1).max(20).refine(noNul, NUL_MSG)).max(50).optional(),
 });
 export type PlanActivationsRequest = z.infer<typeof PlanActivationsRequest>;
 
@@ -562,8 +587,8 @@ export const StudentDto = z.object({
 });
 export type StudentDto = z.infer<typeof StudentDto>;
 export const ListStudentsQuery = z.object({
-  q: z.string().trim().min(1).max(100).optional(),
-  class_section: z.string().trim().min(1).max(20).optional(),
+  q: z.string().trim().min(1).max(100).refine(noNul, NUL_MSG).optional(),
+  class_section: z.string().trim().min(1).max(20).refine(noNul, NUL_MSG).optional(),
 });
 export type ListStudentsQuery = z.infer<typeof ListStudentsQuery>;
 export const ListStudentsResponse = z.object({ students: z.array(StudentDto) });
@@ -584,3 +609,9 @@ export type ResetStudentPasswordResponse = z.infer<typeof ResetStudentPasswordRe
 /** POST /api/me/change-password — own account only; also clears the must-change flag. */
 export const ChangePasswordRequest = z.object({ new_password: z.string().min(8).max(72) }).strict();
 export type ChangePasswordRequest = z.infer<typeof ChangePasswordRequest>;
+
+/** GET /api/students/sections — distinct class_section values for the cohort picker. */
+export const StudentSectionsResponse = z.object({
+  sections: z.array(z.string()),
+});
+export type StudentSectionsResponse = z.infer<typeof StudentSectionsResponse>;

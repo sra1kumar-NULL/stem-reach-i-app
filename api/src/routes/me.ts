@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { eq, sql } from "drizzle-orm";
-import { ZodError } from "zod";
 import { dailySets, profiles, reviewStates, streaks, submissions, type Profile } from "@stemreach/core/db/schema";
-import { badRequest, type AppContext } from "../lib/http.js";
+import type { AppContext } from "../lib/http.js";
+import { parseBody } from "../lib/validate.js";
 import { normalizeLanguagePref } from "../lib/language.js";
 import { answeredInSet, countDueReviews } from "../lib/reviews.js";
 import { effectiveCurrentStreak } from "../lib/streak.js";
@@ -77,13 +77,7 @@ export function routes(ctx: AppContext): Hono {
   // the verified token's user id; role, id and class are never accepted.
   app.patch("/", async (c) => {
     const user = c.var.user;
-    let body: UpdateMeRequest;
-    try {
-      body = UpdateMeRequest.parse(await c.req.json().catch(() => null));
-    } catch (e) {
-      if (e instanceof ZodError) throw badRequest(e.issues.map((i) => i.message).join("; "));
-      throw e;
-    }
+    const body = await parseBody(c, UpdateMeRequest);
     const patch: Partial<Pick<Profile, "fullName" | "questionLanguage">> = {};
     if (body.full_name !== undefined) patch.fullName = body.full_name;
     if (body.question_language !== undefined) patch.questionLanguage = body.question_language;

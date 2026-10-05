@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
+import { looksLikeProduction, OVERRIDE_FLAG } from "./prod-guard.js";
 
 dotenv.config({ path: [path.resolve(import.meta.dirname, "../../api/.env"), path.resolve(import.meta.dirname, "../.env")] });
 
@@ -23,6 +24,18 @@ async function main() {
     console.error("SUPABASE_URL / SUPABASE_SERVICE_KEY missing (api/.env)");
     process.exit(1);
   }
+  const confirmed = process.argv.includes(OVERRIDE_FLAG);
+  if (looksLikeProduction(url, process.env.DATABASE_URL) && !confirmed) {
+    console.error(
+      [
+        "Refusing to run: SUPABASE_URL / DATABASE_URL does not look like a local throwaway stack.",
+        "These demo accounts (including a TEACHER) use a password that is printed in this repo's docs.",
+        `If you really want them on this project, re-run with ${OVERRIDE_FLAG}.`,
+      ].join("\n"),
+    );
+    process.exit(1);
+  }
+  console.warn("WARNING: the demo accounts below share a PUBLIC password. Never leave them on a real school's project.");
   const admin = createClient(url, serviceKey);
 
   async function ensureUser(email: string, password: string, name: string, role: "student" | "teacher", classSection: string | null) {

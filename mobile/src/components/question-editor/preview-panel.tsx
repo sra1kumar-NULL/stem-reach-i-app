@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { QuestionCard } from '@/components/question-card';
 import { Accents, Type } from '@/constants/theme';
@@ -52,7 +52,7 @@ export function PreviewPanel({ form, sectionName }: Props) {
       <Text style={[Type.body, styles.note, { color: theme.textSecondary }]} accessibilityRole="text">
         Tap an answer to try it. Nothing is saved.
       </Text>
-      <View style={styles.stage}>
+      <ScrollView style={styles.cap} contentContainerStyle={styles.stage} nestedScrollEnabled showsVerticalScrollIndicator>
         <QuestionCard
           key={key}
           question={question}
@@ -63,7 +63,7 @@ export function PreviewPanel({ form, sectionName }: Props) {
           onAnswered={noop}
           onAdvance={again}
         />
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -71,5 +71,7 @@ export function PreviewPanel({ form, sectionName }: Props) {
 const styles = StyleSheet.create({
   frame: { borderWidth: 1, borderRadius: 18, padding: 10, gap: 8 },
   note: { fontSize: 12, textAlign: 'center' },
+  /** The real card is tall; cap the preview so it never pushes the form 700 px down. */
+  cap: { maxHeight: 360 },
   stage: { minHeight: 520, flexGrow: 1 },
 });

@@ -7,7 +7,7 @@ services:
     rootDir: api
     buildCommand: npm install
     startCommand: npm start
-    healthCheckPath: /api/healthz
+    healthCheckPath: /api/readyz
     envVars:
       - key: SUPABASE_URL
         sync: false
@@ -17,3 +17,6 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
+      # Optional: number of proxies appending to X-Forwarded-For (Render = 1).
+      - key: TRUSTED_PROXY_HOPS
+        value: "1"

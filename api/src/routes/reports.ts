@@ -1,31 +1,60 @@
 import { Hono } from "hono";
 import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
-import { dailySetSections, dailySets, profiles, questions, reviewStates, sections, submissions } from "@stemreach/core/db/schema";
+import { dailySetCohorts, dailySetSections, dailySets, profiles, questions, reviewStates, sections, submissions } from "@stemreach/core/db/schema";
 import { requireRole } from "../lib/auth.js";
 import type { AppContext } from "../lib/http.js";
-import { badRequest } from "../lib/http.js";
-import { addDaysIso, DAILY_PER_SECTION, todayInTz, type ParticipationReport, type PerformanceReport } from "@stemreach/core";
+import { HttpError } from "../lib/http.js";
+import { parseOr400 } from "../lib/validate.js";
+import { targetFor, targetsByPref } from "../lib/progress.js";
+import { addDaysIso, ISO_DATE, todayInTz, type ParticipationReport, type PerformanceReport } from "@stemreach/core";
+import { z } from "zod";
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Query-string schemas: contract date validation (impossible dates and NUL bytes are 400, never a DB 500). */
+const ParticipationQuery = z.object({
+  date: ISO_DATE.optional(),
+  class_section: z.string().min(1).max(40).refine((v) => !v.includes("\u0000"), "must not contain NUL characters").optional(),
+});
+const PerformanceQuery = z.object({
+  section_id: z.string().uuid("section_id must be a UUID").optional(),
+  from: ISO_DATE.optional(),
+  to: ISO_DATE.optional(),
+});
 
 export function routes(ctx: AppContext): Hono {
   const app = new Hono();
 
   // GET /api/reports/participation?date=YYYY-MM-DD&class_section=10A
   app.get("/participation", requireRole("teacher"), async (c) => {
-    const date = c.req.query("date") ?? todayInTz(ctx.timezone);
-    if (!DATE_RE.test(date)) throw badRequest("date must be YYYY-MM-DD");
-    const classSection = c.req.query("class_section");
+    const q = parseOr400(ParticipationQuery, c.req.query());
+    const date = q.date ?? todayInTz(ctx.timezone);
+    const classSection = q.class_section;
 
     const [set] = await ctx.db.select().from(dailySets).where(eq(dailySets.setDate, date)).limit(1);
-    if (!set) throw badRequest(`no activation for ${date} — activate sections first`);
+    // C3: kept as a 400 (mobile's participation screen shows the message with a retry and has no
+    // "nothing activated" state), but with its own stable code so clients can tell it apart.
+    if (!set) throw new HttpError(400, "no_activation", `no activation for ${date} — activate sections first`);
+
+    const cohortRows = await ctx.db
+      .select({ classSection: dailySetCohorts.classSection })
+      .from(dailySetCohorts)
+      .where(eq(dailySetCohorts.dailySetId, set.id));
+
+    const effectiveSections: string[] =
+      cohortRows.length > 0
+        ? cohortRows.map((r) => r.classSection)
+        : classSection
+        ? [classSection]
+        : [];
 
     const students = await ctx.db
       .select()
       .from(profiles)
       .where(
-        classSection ? and(eq(profiles.role, "student"), eq(profiles.classSection, classSection)) : eq(profiles.role, "student"),
+        effectiveSections.length > 0
+          ? and(eq(profiles.role, "student"), inArray(profiles.classSection, effectiveSections))
+          : classSection
+          ? and(eq(profiles.role, "student"), eq(profiles.classSection, classSection))
+          : eq(profiles.role, "student"),
       )
       .orderBy(profiles.fullName);
 
@@ -52,15 +81,8 @@ export function routes(ctx: AppContext): Hono {
       perStudent.set(s.studentId, ids);
     }
 
-    // Day's target per section is min(5, enabled questions) — must match the feed.
-    const enabledCounts = activatedIds.length
-      ? await ctx.db
-          .select({ sectionId: questions.sectionId, count: sql<number>`count(*)::int` })
-          .from(questions)
-          .where(and(eq(questions.enabled, true), eq(questions.status, "published"), inArray(questions.sectionId, activatedIds)))
-          .groupBy(questions.sectionId)
-      : [];
-    const target = enabledCounts.reduce((sum, r) => sum + Math.min(r.count, DAILY_PER_SECTION), 0);
+    // Day's target: the same language-aware dose the feed serves (lib/progress.ts), per student preference.
+    const targets = await targetsByPref(ctx.db, activatedIds);
 
     const done: ParticipationReport["done"] = [];
     const pending: ParticipationReport["pending"] = [];
@@ -69,7 +91,7 @@ export function routes(ctx: AppContext): Hono {
       const answered = perStudent.get(student.id)?.size ?? 0;
       const name = student.fullName;
       if (answered > 0) {
-        done.push({ id: student.id, name, answered, completed: answered >= target });
+        done.push({ id: student.id, name, answered, completed: answered >= targetFor(targets, student.questionLanguage) });
       } else {
         pending.push({ id: student.id, name });
       }
@@ -81,12 +103,7 @@ export function routes(ctx: AppContext): Hono {
 
   // GET /api/reports/performance?section_id=&from=&to=
   app.get("/performance", requireRole("teacher"), async (c) => {
-    const sectionId = c.req.query("section_id");
-    const from = c.req.query("from");
-    const to = c.req.query("to");
-    if (from && !DATE_RE.test(from)) throw badRequest("from must be YYYY-MM-DD");
-    if (to && !DATE_RE.test(to)) throw badRequest("to must be YYYY-MM-DD");
-    if (sectionId && !UUID_RE.test(sectionId)) throw badRequest("section_id must be a UUID");
+    const { section_id: sectionId, from, to } = parseOr400(PerformanceQuery, c.req.query());
 
     // from/to are school-calendar days: compare each answer's date in the
     // school timezone (a bare ::date compare used the DB session's UTC day).

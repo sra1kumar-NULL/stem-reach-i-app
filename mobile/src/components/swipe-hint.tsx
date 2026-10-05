@@ -1,26 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Easing, Platform, StyleSheet, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Animated, Easing, Platform, StyleSheet, View } from 'react-native';
 
 import { Text as UIText } from '@/components/ui/text';
 import { Accents, Type } from '@/constants/theme';
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
 
-/** Follows the OS "reduce motion" setting (false until known). */
-export function useReduceMotion(): boolean {
-  const [reduce, setReduce] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    AccessibilityInfo.isReduceMotionEnabled()
-      .then((v) => alive && setReduce(v))
-      .catch(() => undefined);
-    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduce);
-    return () => {
-      alive = false;
-      sub.remove();
-    };
-  }, []);
-  return reduce;
-}
+/** Kept for existing imports; the shared hook is the single implementation. */
+export const useReduceMotion = useReducedMotion;
 
 export const SWIPE_CUE_COPY = Platform.OS === 'web' ? 'Scroll or press the Down arrow' : 'Swipe up';
 

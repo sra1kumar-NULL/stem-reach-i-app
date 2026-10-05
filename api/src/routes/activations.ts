@@ -1,20 +1,26 @@
 import { Hono } from "hono";
-import { and, asc, count, eq, gte, inArray, lte } from "drizzle-orm";
-import { ZodError } from "zod";
-import { dailySetSections, dailySets, questions, sections } from "@stemreach/core/db/schema";
+import { and, asc, count, eq, gte, inArray, lte, type SQL } from "drizzle-orm";
+import { z } from "zod";
+import { chapters, dailySetCohorts, dailySetSections, dailySets, questions, sections } from "@stemreach/core/db/schema";
 import { requireRole } from "../lib/auth.js";
 import type { AppContext } from "../lib/http.js";
-import { badRequest } from "../lib/http.js";
+import { badRequest, conflict } from "../lib/http.js";
 import {
   ActivateRequest,
   ActivationRangeQuery,
   PlanActivationsRequest,
+  ISO_DATE,
   isValidIsoDate,
   todayInTz,
   type ActivationRangeResponse,
   type ActivationResponse,
 } from "@stemreach/core";
-import { parseOr400 } from "../lib/catalog-utils.js";
+import { parseBody, parseOr400, pgCode } from "../lib/validate.js";
+
+/** Questions students can actually receive (enabled and published) join condition for a section. */
+const servableJoin = (): SQL => and(eq(questions.sectionId, sections.id), eq(questions.enabled, true), eq(questions.status, "published")) as SQL;
+
+const DateQuery = z.object({ date: ISO_DATE.optional() });
 
 /** Longest span (inclusive days) GET /activations/range will serve. */
 export const MAX_RANGE_DAYS = 62;
@@ -43,10 +49,16 @@ export async function activationRange(ctx: AppContext, from: string, to: string,
     })
     .from(dailySetSections)
     .innerJoin(sections, eq(sections.id, dailySetSections.sectionId))
-    .leftJoin(questions, eq(questions.sectionId, sections.id))
+    .innerJoin(chapters, eq(chapters.id, sections.chapterId))
+    .leftJoin(questions, servableJoin())
     .where(inArray(dailySetSections.dailySetId, sets.map((s) => s.id)))
-    .groupBy(dailySetSections.dailySetId, sections.id)
-    .orderBy(asc(sections.sortOrder));
+    .groupBy(dailySetSections.dailySetId, sections.id, chapters.id)
+    .orderBy(asc(chapters.ncertNo), asc(sections.sortOrder));
+
+  const cohortRows = await ctx.db
+    .select({ daily_set_id: dailySetCohorts.dailySetId, classSection: dailySetCohorts.classSection })
+    .from(dailySetCohorts)
+    .where(inArray(dailySetCohorts.dailySetId, sets.map((s) => s.id)));
 
   return {
     activations: sets.map((s) => ({
@@ -55,6 +67,7 @@ export async function activationRange(ctx: AppContext, from: string, to: string,
       sections: secRows
         .filter((r) => r.daily_set_id === s.id)
         .map(({ id, section_no, name, question_count }) => ({ id, section_no, name, question_count })),
+      target_cohorts: cohortRows.filter((r) => r.daily_set_id === s.id).map((r) => r.classSection),
     })),
   };
 }
@@ -78,13 +91,32 @@ async function snapshot(ctx: AppContext, date: string): Promise<ActivationRespon
           question_count: count(questions.id),
         })
         .from(sections)
-        .leftJoin(questions, eq(questions.sectionId, sections.id))
+        .innerJoin(chapters, eq(chapters.id, sections.chapterId))
+        .leftJoin(questions, servableJoin())
         .where(inArray(sections.id, sectionIds))
-        .groupBy(sections.id)
-        .orderBy(sections.sortOrder)
+        .groupBy(sections.id, chapters.id)
+        .orderBy(chapters.ncertNo, sections.sortOrder)
     : [];
 
-  return { daily_set_id: set.id, date, sections: secRows };
+  const cohortRows = await ctx.db
+    .select({ classSection: dailySetCohorts.classSection })
+    .from(dailySetCohorts)
+    .where(eq(dailySetCohorts.dailySetId, set.id));
+
+  return { daily_set_id: set.id, date, sections: secRows, target_cohorts: cohortRows.map((r) => r.classSection) };
+}
+
+/**
+ * A topic deleted between the existence check and the insert (a concurrent chapter/topic delete)
+ * shows up as a foreign-key violation: that is a stale request (409), not a server error.
+ */
+async function replacingSections<T>(write: () => Promise<T>): Promise<T> {
+  try {
+    return await write();
+  } catch (e) {
+    if (pgCode(e, "23503")) throw conflict("a topic was deleted while activating — refresh and try again");
+    throw e;
+  }
 }
 
 export function routes(ctx: AppContext): Hono {
@@ -92,13 +124,7 @@ export function routes(ctx: AppContext): Hono {
 
   // POST /api/activations — teacher marks today's taught sections (idempotent per date)
   app.post("/", requireRole("teacher"), async (c) => {
-    let body: ActivateRequest;
-    try {
-      body = ActivateRequest.parse(await c.req.json());
-    } catch (e) {
-      if (e instanceof ZodError) throw badRequest(e.issues.map((i) => i.message).join("; "));
-      throw e;
-    }
+    const body = await parseBody(c, ActivateRequest);
 
     const date = body.date ?? todayInTz(ctx.timezone);
     if (!isValidIsoDate(date)) throw badRequest(`date ${date} is not a real calendar date`);
@@ -116,7 +142,7 @@ export function routes(ctx: AppContext): Hono {
 
     // One transaction: the set's sections are replaced atomically, so a failure
     // mid-way can no longer leave today's set with zero sections (empty feeds).
-    await ctx.db.transaction(async (tx) => {
+    await replacingSections(async () => ctx.db.transaction(async (tx) => {
       const [row] = await tx
         .insert(dailySets)
         .values({ setDate: date, activatedBy: teacherId })
@@ -124,15 +150,20 @@ export function routes(ctx: AppContext): Hono {
         .returning({ id: dailySets.id });
       await tx.delete(dailySetSections).where(eq(dailySetSections.dailySetId, row.id));
       await tx.insert(dailySetSections).values(sectionIds.map((sectionId) => ({ dailySetId: row.id, sectionId })));
-    });
+      await tx.delete(dailySetCohorts).where(eq(dailySetCohorts.dailySetId, row.id));
+      if (body.target_cohorts && body.target_cohorts.length > 0) {
+        await tx.insert(dailySetCohorts).values(
+          body.target_cohorts.map((classSection) => ({ dailySetId: row.id, classSection })),
+        );
+      }
+    }));
 
     return c.json(await snapshot(ctx, date));
   });
 
   // GET /api/activations?date=YYYY-MM-DD — current snapshot for a date
   app.get("/", requireRole("teacher"), async (c) => {
-    const date = c.req.query("date") ?? todayInTz(ctx.timezone);
-    if (!isValidIsoDate(date)) throw badRequest("date must be a real calendar date (YYYY-MM-DD)");
+    const date = parseOr400(DateQuery, c.req.query()).date ?? todayInTz(ctx.timezone);
     return c.json(await snapshot(ctx, date));
   });
 
@@ -147,7 +178,7 @@ export function routes(ctx: AppContext): Hono {
 
   // POST /api/activations/plan — same sections on several future dates, all-or-nothing
   app.post("/plan", requireRole("teacher"), async (c) => {
-    const body = parseOr400(PlanActivationsRequest, await c.req.json().catch(() => null));
+    const body = await parseBody(c, PlanActivationsRequest);
 
     const bad = body.dates.filter((d) => !isValidIsoDate(d));
     if (bad.length > 0) throw badRequest(`not real calendar dates: ${bad.join(", ")}`);
@@ -164,7 +195,7 @@ export function routes(ctx: AppContext): Hono {
     }
 
     const teacherId = c.var.user.id;
-    await ctx.db.transaction(async (tx) => {
+    await replacingSections(async () => ctx.db.transaction(async (tx) => {
       const setRows = await tx
         .insert(dailySets)
         .values(dates.map((setDate) => ({ setDate, activatedBy: teacherId })))
@@ -175,7 +206,15 @@ export function routes(ctx: AppContext): Hono {
       await tx
         .insert(dailySetSections)
         .values(setIds.flatMap((dailySetId) => sectionIds.map((sectionId) => ({ dailySetId, sectionId }))));
-    });
+      await tx.delete(dailySetCohorts).where(inArray(dailySetCohorts.dailySetId, setIds));
+      if (body.target_cohorts && body.target_cohorts.length > 0) {
+        await tx.insert(dailySetCohorts).values(
+          setIds.flatMap((dailySetId) =>
+            body.target_cohorts!.map((classSection) => ({ dailySetId, classSection })),
+          ),
+        );
+      }
+    }));
 
     return c.json(await activationRange(ctx, dates[0], dates[dates.length - 1], dates));
   });

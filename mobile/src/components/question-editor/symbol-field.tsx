@@ -12,6 +12,8 @@ interface Props {
   limit: number;
   error?: string;
   hint?: string;
+  /** Visible helper line under the field (hint is the spoken-only variant). */
+  helper?: string;
   placeholder?: string;
   multiline?: boolean;
   disabled?: boolean;
@@ -27,7 +29,7 @@ interface Props {
 
 /** Labelled text field with a character counter and an inline error; reports its caret for symbol insertion. */
 export const SymbolField = forwardRef<TextInput, Props>(function SymbolField(
-  { label, value, onChangeText, limit, error, hint, placeholder, multiline, disabled, selection, onSelectionChange, onFocus, leading, minLines = 1, accessibilityLabel },
+  { label, value, onChangeText, limit, error, hint, helper, placeholder, multiline, disabled, selection, onSelectionChange, onFocus, leading, minLines = 1, accessibilityLabel },
   ref,
 ) {
   const theme = useTheme();
@@ -76,6 +78,7 @@ export const SymbolField = forwardRef<TextInput, Props>(function SymbolField(
           ]}
         />
       </View>
+      {helper && !error ? <Text style={[Type.body, styles.error, { color: theme.textSecondary }]}>{helper}</Text> : null}
       {error ? (
         <Text accessibilityRole="alert" style={[Type.body, styles.error, { color: theme.dangerText }]}>
           {error}

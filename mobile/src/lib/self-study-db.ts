@@ -92,7 +92,16 @@ export async function getSelfStudyDb(): Promise<SQLite.SQLiteDatabase> {
         // Versioned migrations (PRAGMA user_version): v1 adds decks.owner_id.
         const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
         const statements = migrationStatements(row?.user_version ?? 0);
-        if (statements.length > 0) await db.execAsync(`BEGIN; ${statements.join('; ')}; COMMIT;`);
+        if (statements.length > 0) {
+          try {
+            await db.execAsync(`BEGIN; ${statements.join('; ')}; COMMIT;`);
+          } catch (error) {
+            // A failed statement leaves the transaction open, and every retry would then
+            // fail with "cannot start a transaction within a transaction". Undo it first.
+            await db.execAsync('ROLLBACK').catch(() => undefined);
+            throw error;
+          }
+        }
       })
       .catch((error) => {
         schemaPromise = null;

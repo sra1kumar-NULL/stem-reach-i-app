@@ -11,7 +11,7 @@ import {
 import type { SeedContent, SeedQuestion } from "@stemreach/core/content";
 import { requireRole } from "../lib/auth.js";
 import { conflict, notFound, type AppContext } from "../lib/http.js";
-import { parseOr400, pgCode, zodMessage } from "../lib/catalog-utils.js";
+import { parseBody, parseOr400, pgCode, zodMessage } from "../lib/validate.js";
 import { normalizeQuestionText as normalizeText } from "../lib/text-normalize.js";
 
 /** Used when a legacy row has no explanation (the seed schema requires one). */
@@ -30,7 +30,7 @@ export function routes(ctx: AppContext): Hono {
 
   // POST /api/questions/import — bulk create, per-row validation, all-or-nothing.
   app.post("/import", requireRole("teacher"), async (c) => {
-    const req = parseOr400(ImportQuestionsRequest, await c.req.json().catch(() => null));
+    const req = await parseBody(c, ImportQuestionsRequest);
 
     // 1. Validate each row on its own so every error is reported at once.
     const prepared: Prepared[] = req.rows.map((raw, index) => {

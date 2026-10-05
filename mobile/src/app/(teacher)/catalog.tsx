@@ -28,6 +28,8 @@ import { Text as UIText } from '@/components/ui/text';
 import { Accents, Fonts, onAccent, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { toFriendlyError } from '@/lib/friendly-error';
+import { deleteBlockedHint, formatQuestionCounts } from '@/lib/question-editor';
+import { syllabusStore } from '@/lib/syllabus-store';
 
 type Chapter = SyllabusResponse['chapters'][number];
 type Topic = Chapter['sections'][number];
@@ -56,17 +58,20 @@ function friendlyCatalogError(e: unknown, fallback: string): string {
 
 export default function CatalogScreen() {
   const { showToast } = useToast();
+  const theme = useTheme();
   const [syllabus, setSyllabus] = useState<SyllabusResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
   const [del, setDel] = useState<DeleteTarget | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [reordering, setReordering] = useState<string | null>(null);
+  /** Chapter whose topics currently show the move up / down controls. */
+  const [reorderFor, setReorderFor] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      setSyllabus(await getSyllabus());
+      setSyllabus(await syllabusStore.get(getSyllabus));
     } catch (e) {
       setError(toFriendlyError(e, 'Could not load chapters and topics.'));
     }
@@ -126,7 +131,7 @@ export default function CatalogScreen() {
             Chapters and topics
           </Heading>
           <UIText className="text-sm text-muted-foreground" style={Type.body}>
-            Organise what students revise. A chapter or topic can only be deleted when it is empty.
+            Organise what students revise. Live questions are published and active, so students can get them. Hidden ones are drafts or archived. A chapter or topic can only be deleted when it is empty.
           </UIText>
 
           <View style={styles.actionRow}>
@@ -153,6 +158,7 @@ export default function CatalogScreen() {
 
           {syllabus && chapters.length === 0 ? (
             <Box className="items-center gap-2 rounded-2xl border border-border p-5">
+              <Ionicons name="library-outline" size={32} color={theme.textSecondary} accessible={false} />
               <UIText className="font-bold text-foreground" style={Type.bodyBold}>
                 No chapters yet
               </UIText>
@@ -164,18 +170,27 @@ export default function CatalogScreen() {
 
           {chapters.map((ch) => {
             const total = ch.sections.reduce((n, s) => n + s.question_count, 0);
+            const live = ch.sections.reduce((n, s) => n + s.enabled_question_count, 0);
+            const reorderOn = reorderFor === ch.id;
             return (
               <Box key={ch.id} className="gap-2 rounded-2xl border border-border bg-card p-3" accessibilityLabel={`Chapter ${ch.ncert_no}, ${ch.name}`}>
-                <UIText className="text-base font-bold text-foreground" style={Type.bodyBold}>
+                <UIText className="text-base font-bold text-foreground" style={Type.bodyBold} accessibilityRole="header">
                   {ch.ncert_no}. {ch.name}
                 </UIText>
                 <UIText className="text-xs text-muted-foreground" style={Type.body}>
-                  {cap(ch.subject)} · {ch.sections.length} {ch.sections.length === 1 ? 'topic' : 'topics'} · {total}{' '}
-                  {total === 1 ? 'question' : 'questions'}
+                  {cap(ch.subject)} · {ch.sections.length} {ch.sections.length === 1 ? 'topic' : 'topics'} · {formatQuestionCounts(total, live)}
                 </UIText>
                 <View style={styles.btnRow}>
                   <SmallButton icon="create-outline" label="Edit" a11y={`Edit chapter ${ch.name}`} onPress={() => setForm({ kind: 'chapter', chapter: ch })} />
                   <SmallButton icon="add" label="Add topic" a11y={`Add a topic to ${ch.name}`} onPress={() => setForm({ kind: 'topic', chapter: ch, topic: null })} />
+                  {ch.sections.length > 1 ? (
+                    <SmallButton
+                      icon={reorderOn ? 'checkmark' : 'swap-vertical-outline'}
+                      label={reorderOn ? 'Done' : 'Reorder'}
+                      a11y={reorderOn ? `Done reordering topics in ${ch.name}` : `Reorder topics in ${ch.name}`}
+                      onPress={() => setReorderFor(reorderOn ? null : ch.id)}
+                    />
+                  ) : null}
                   <SmallButton
                     icon="trash-outline"
                     label="Delete"
@@ -185,6 +200,11 @@ export default function CatalogScreen() {
                     onPress={() => setDel({ kind: 'chapter', chapter: ch })}
                   />
                 </View>
+                {total > 0 ? (
+                  <UIText className="text-xs text-muted-foreground" style={Type.body}>
+                    {deleteBlockedHint(total)}.
+                  </UIText>
+                ) : null}
 
                 {ch.sections.length === 0 ? (
                   <UIText className="text-sm text-muted-foreground" style={Type.body}>
@@ -197,26 +217,30 @@ export default function CatalogScreen() {
                         {s.section_no} {s.name}
                       </UIText>
                       <UIText className="text-xs text-muted-foreground" style={Type.body}>
-                        {s.question_count} {s.question_count === 1 ? 'question' : 'questions'}
-                        {s.enabled_question_count !== s.question_count ? ` (${s.enabled_question_count} active)` : ''}
+                        {formatQuestionCounts(s.question_count, s.enabled_question_count)}
                       </UIText>
                       <View style={styles.btnRow}>
-                        <IconButton
-                          icon="arrow-up"
-                          label={`Move ${s.section_no} ${s.name} up`}
-                          disabled={i === 0 || reordering !== null}
-                          onPress={() => void move(ch, i, -1)}
-                        />
-                        <IconButton
-                          icon="arrow-down"
-                          label={`Move ${s.section_no} ${s.name} down`}
-                          disabled={i === ch.sections.length - 1 || reordering !== null}
-                          onPress={() => void move(ch, i, 1)}
-                        />
-                        <IconButton icon="create-outline" label={`Edit topic ${s.section_no} ${s.name}`} onPress={() => setForm({ kind: 'topic', chapter: ch, topic: s })} />
-                        <IconButton
+                        {reorderOn ? (
+                          <>
+                            <IconButton
+                              icon="arrow-up"
+                              label={`Move ${s.section_no} ${s.name} up`}
+                              disabled={i === 0 || reordering !== null}
+                              onPress={() => void move(ch, i, -1)}
+                            />
+                            <IconButton
+                              icon="arrow-down"
+                              label={`Move ${s.section_no} ${s.name} down`}
+                              disabled={i === ch.sections.length - 1 || reordering !== null}
+                              onPress={() => void move(ch, i, 1)}
+                            />
+                          </>
+                        ) : null}
+                        <SmallButton icon="create-outline" label="Edit" a11y={`Edit topic ${s.section_no} ${s.name}`} onPress={() => setForm({ kind: 'topic', chapter: ch, topic: s })} />
+                        <SmallButton
                           icon="trash-outline"
-                          label={
+                          label="Delete"
+                          a11y={
                             s.question_count > 0
                               ? `Delete topic ${s.section_no} (unavailable, it has ${s.question_count} questions)`
                               : `Delete topic ${s.section_no} ${s.name}`
@@ -226,6 +250,11 @@ export default function CatalogScreen() {
                           onPress={() => setDel({ kind: 'topic', chapter: ch, topic: s })}
                         />
                       </View>
+                      {s.question_count > 0 ? (
+                        <UIText className="text-xs text-muted-foreground" style={Type.body}>
+                          {deleteBlockedHint(s.question_count)}.
+                        </UIText>
+                      ) : null}
                     </View>
                   ))
                 )}
@@ -268,6 +297,7 @@ export default function CatalogScreen() {
             : 'This topic will be removed. This cannot be undone.'
         }
         confirmLabel="Delete"
+          destructive
         loading={deleting}
         onConfirm={() => void confirmDelete()}
         onCancel={() => setDel(null)}

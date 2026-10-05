@@ -1,11 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Link, type Href } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect, useRouter, type Href } from 'expo-router';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { activate, getActivations, getSyllabus } from '@/api/client';
-import { ConfirmSheet } from '@/components/confirm-sheet';
+import { getStudentSections } from '@/api/students';
+import { ErrorState } from '@/components/error-state';
+import { ActionBar } from '@/components/teacher-home/action-bar';
+import { ChapterSection } from '@/components/teacher-home/chapter-section';
+import { ClassOverview } from '@/components/teacher-home/class-overview';
+import { HomeSkeleton } from '@/components/teacher-home/home-skeleton';
 import {
   AlertDialog,
   AlertDialogBackdrop,
@@ -18,88 +23,115 @@ import { Box } from '@/components/ui/box';
 import { Button, ButtonText } from '@/components/ui/button';
 import { Heading } from '@/components/ui/heading';
 import { Text as UIText } from '@/components/ui/text';
-import { ThemeToggle } from '@/components/theme-toggle';
 import { useToast } from '@/components/toast';
-import { Accents, Nord, Type } from '@/constants/theme';
-import { useConfirmSignOut } from '@/hooks/use-confirm-sign-out';
+import { Accents, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { toFriendlyError } from '@/lib/friendly-error';
+import {
+  buildGroups,
+  dateFromIso,
+  defaultCollapsed,
+  headerDate,
+  liveQuestions,
+  plural,
+  reconcileSelection,
+  sameSelection,
+  selectionTotals,
+  statusLine,
+  toggleChapterSelection,
+  type ChapterGroup,
+} from '@/lib/teacher-home';
 import type { SyllabusResponse } from '@stemreach/core';
 
-interface Row {
-  id: string;
-  label: string;
-  count: number;
-  chapter: string;
-}
-
 export default function ActivateScreen() {
-  const { confirmOut, signingOut, openConfirm, closeConfirm, confirmSignOut } = useConfirmSignOut();
   const { showToast } = useToast();
   const theme = useTheme();
+  const router = useRouter();
   const [syllabus, setSyllabus] = useState<SyllabusResponse | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [todaySections, setTodaySections] = useState<Set<string>>(new Set());
+  const [todayQuestions, setTodayQuestions] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  /** The school-calendar day the API resolved for "today" (null until loaded: header falls back to the device day). */
+  const [schoolDate, setSchoolDate] = useState<string | null>(null);
+  /** Available class sections (cohorts) for the activation target picker. */
+  const [sections, setSections] = useState<string[]>([]);
+  /** Which cohorts will receive the activation. Empty = all students. */
+  const [selectedCohorts, setSelectedCohorts] = useState<string[]>([]);
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+  const activeRef = useRef(todaySections);
+  activeRef.current = todaySections;
+  const loadedOnce = useRef(false);
 
-  const load = useCallback(() => {
-    setError(null);
-    Promise.all([getSyllabus(), getActivations()])
-      .then(([s, act]) => {
-        setSyllabus(s);
+  /**
+   * (Re)loads the syllabus + today's activation. Runs on every focus so a topic added or a question published in
+   * another tab shows here; unsaved selection edits survive a background reload (see `reconcileSelection`).
+   */
+  const load = useCallback((isRefresh = false) => {
+    if (!loadedOnce.current || isRefresh) setError(null);
+    if (isRefresh) setRefreshing(true);
+    Promise.all([getSyllabus(), getActivations(), getStudentSections()])
+      .then(([s, act, secs]) => {
         const active = new Set(act.sections.map((x) => x.id));
+        const existing = new Set(s.chapters.flatMap((c) => c.sections.map((x) => x.id)));
+        setSelected(
+          loadedOnce.current && !isRefresh
+            ? reconcileSelection(selectedRef.current, activeRef.current, active, existing)
+            : new Set(active),
+        );
+        loadedOnce.current = true;
+        setSyllabus(s);
         setTodaySections(active);
-        setSelected(new Set(active));
+        setTodayQuestions(act.sections.reduce((n, x) => n + x.question_count, 0));
+        setSchoolDate(act.date);
+        setSections(secs.sections);
+        if (!loadedOnce.current || isRefresh) setSelectedCohorts(act.target_cohorts ?? []);
+        setError(null);
       })
-      .catch((e) => setError(toFriendlyError(e, 'Could not load the syllabus.')));
+      .catch((e) => {
+        // A failed background refresh keeps the data on screen.
+        if (!loadedOnce.current || isRefresh) setError(toFriendlyError(e, 'Could not load the syllabus.'));
+      })
+      .finally(() => setRefreshing(false));
   }, []);
 
-  useEffect(load, [load]);
+  useFocusEffect(useCallback(() => load(), [load]));
 
-  const toggle = (id: string) => {
+  const toggle = useCallback((id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  };
+  }, []);
 
-  const toggleChapter = (chapterId: string) => {
-    const sectionIds = (syllabus?.chapters ?? []).find((ch) => ch.id === chapterId)?.sections.map((s) => s.id) ?? [];
-    setSelected((prev) => {
-      const next = new Set(prev);
-      const allOn = sectionIds.every((id) => next.has(id));
-      for (const id of sectionIds) {
-        if (allOn) next.delete(id);
-        else next.add(id);
-      }
-      return next;
-    });
-  };
+  const toggleChapter = useCallback((group: ChapterGroup) => {
+    setSelected((prev) => toggleChapterSelection(group, prev));
+  }, []);
 
-  const rows: Row[] = [];
-  for (const ch of syllabus?.chapters ?? []) {
-    for (const s of ch.sections) {
-      rows.push({ id: s.id, label: s.section_no, count: s.enabled_question_count, chapter: ch.name });
-    }
-  }
-
-  const selectedQuestionCount = rows.filter((r) => selected.has(r.id)).reduce((n, r) => n + r.count, 0);
-  const isChanged =
-    [...selected].sort().join(',') !==
-    [...todaySections].sort().join(',');
+  const groups = useMemo(() => buildGroups(syllabus), [syllabus]);
+  const totals = selectionTotals(groups, selected);
+  const hasActivation = todaySections.size > 0;
+  const isChanged = !sameSelection(selected, todaySections);
+  const collapse = defaultCollapsed(groups.length);
 
   const doSave = async () => {
     setBusy(true);
     setConfirmOpen(false);
     try {
-      const res = await activate({ section_ids: [...selected] });
+      const res = await activate({
+        section_ids: [...selected],
+        target_cohorts: selectedCohorts.length > 0 ? selectedCohorts : undefined,
+      });
       const total = res.sections.reduce((n, s) => n + s.question_count, 0);
-      showToast(`Revision activated for ${res.date} — ${res.sections.length} section(s), ${total} questions!`);
+      showToast(`Revision activated for ${res.date} — ${plural(res.sections.length, 'topic')}, ${liveQuestions(total)}!`);
       setTodaySections(new Set(res.sections.map((s) => s.id)));
+      setTodayQuestions(total);
     } catch (e) {
       showToast(toFriendlyError(e, 'Activation failed. Please try again.'), 'error');
     } finally {
@@ -109,180 +141,137 @@ export default function ActivateScreen() {
 
   const save = () => {
     if (selected.size === 0) {
-      showToast('Select at least one section', 'info');
+      showToast('Select at least one topic', 'info');
       return;
     }
-    if (isChanged) setConfirmOpen(true);
-    else doSave();
+    if (!isChanged) return;
+    setConfirmOpen(true);
   };
+
+  const loading = syllabus == null && !error;
+  const empty = syllabus != null && groups.every((g) => g.topics.length === 0);
 
   return (
     <Box className="flex-1 bg-background">
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.headerRow}>
-          <Heading className="text-2xl" style={Type.heading}>
-            Today&apos;s Revision
-          </Heading>
-          <View style={styles.headerActions}>
-            <ThemeToggle />
-            <Pressable
-              onPress={openConfirm}
-              style={({ pressed }) => [styles.signoutBtn, pressed && { opacity: 0.6 }]}
-              accessibilityRole="button"
-              accessibilityLabel="Sign out"
-            >
-              <Ionicons name="log-out-outline" size={14} color={theme.text} />
-              <Text style={[styles.signoutText, { color: theme.text }]}>Sign out</Text>
-            </Pressable>
-          </View>
-        </View>
-
-        <UIText className="text-sm text-muted-foreground" style={Type.body}>
-          Mark the sections you taught today, then activate. Students&apos; feeds update instantly. ✨
-        </UIText>
-
-        {error && (
-          <Box className="bg-danger-soft rounded-xl p-3 gap-2">
-            <UIText className="text-sm text-foreground" style={Type.body}>
-              {error}
-            </UIText>
-            <Button variant="default" className="min-h-11 self-start rounded-lg" onPress={load}>
-              <ButtonText style={Type.bodyBold}>Retry</ButtonText>
-            </Button>
-          </Box>
-        )}
-
-        {syllabus == null && !error ? (
-          <ActivityIndicator size="large" color={Accents.primary} style={{ marginTop: 40 }} />
-        ) : (
-          <FlatList
-            data={syllabus?.chapters ?? []}
-            keyExtractor={(ch) => ch.id}
-            renderItem={({ item: chapter }) => {
-              const allOn = chapter.sections.every((s) => selected.has(s.id));
-              const someOn = chapter.sections.some((s) => selected.has(s.id));
-              return (
-                <Box className="mb-2">
-                  <Pressable
-                    onPress={() => toggleChapter(chapter.id)}
-                    style={({ pressed }) => [styles.chapterHead, pressed && { opacity: 0.7 }]}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: allOn ? true : someOn ? 'mixed' : false }}
-                    accessibilityLabel={`${chapter.name}, all sections`}
-                  >
-                    <View style={[styles.dot, { backgroundColor: allOn ? Accents.success : someOn ? Accents.warn : Accents.border }]} />
-                    <UIText className="flex-1 text-base font-bold text-foreground" style={Type.bodyBold}>
-                      {chapter.name}
-                    </UIText>
-                    <Text style={[styles.check, { color: allOn ? theme.successText : Accents.border }]}>{allOn ? '✓' : '—'}</Text>
-                  </Pressable>
-                  <Box className="gap-2 pl-4">
-                    {chapter.sections.map((s) => {
-                      const isOn = selected.has(s.id);
-                      const wasToday = todaySections.has(s.id);
-                      return (
-                        <Pressable
-                          key={s.id}
-                          onPress={() => toggle(s.id)}
-                          style={({ pressed }) => [styles.row, isOn && styles.rowOn, pressed && { opacity: 0.8 }]}
-                          accessibilityRole="checkbox"
-                          accessibilityState={{ checked: isOn }}
-                          accessibilityLabel={`${chapter.name} — ${s.section_no}, ${s.enabled_question_count} questions`}
-                        >
-                          <View style={[styles.dot, { backgroundColor: isOn ? Accents.success : Accents.border }]} />
-                          <Box className="flex-1 gap-0.5">
-                            <UIText className="text-foreground" style={Type.bodySemi}>
-                              {chapter.name} — {s.section_no}
-                            </UIText>
-                            <UIText className="text-xs text-muted-foreground" style={Type.body}>
-                              {s.enabled_question_count} questions{wasToday && !isOn ? ' · was active today' : ''}
-                            </UIText>
-                          </Box>
-                          <Text style={[styles.check, { color: theme.successText, opacity: isOn ? 1 : 0 }]}>✓</Text>
-                        </Pressable>
-                      );
-                    })}
-                  </Box>
-                </Box>
-              );
-            }}
-            style={{ flex: 1 }}
-            contentContainerStyle={{ paddingBottom: 16 }}
-          />
-        )}
-
-        {/* Opaque, in-flow footer: rows used to scroll visibly under its text and buttons. */}
-        <Box className="gap-2 border-t border-border bg-background pt-2" style={styles.footer}>
-          <UIText className="text-sm font-bold text-foreground" style={Type.bodyBold}>
-            {selected.size} selected · {selectedQuestionCount} questions
-          </UIText>
-          <Button
-            variant="default"
-            size="lg"
-            className={`rounded-2xl ${busy || selected.size === 0 ? 'opacity-50' : ''}`}
-            onPress={save}
-            disabled={busy || selected.size === 0}
-          >
-            {busy ? (
-              <ActivityIndicator color={Nord.nord6} />
-            ) : (
-              <ButtonText style={Type.bodyBold}>🚀 Activate Revision</ButtonText>
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <ScrollView
+          style={styles.flex}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Accents.primary} />}
+        >
+          <View style={styles.header}>
+            <Text style={[styles.date, { color: theme.textSecondary }]}>{headerDate(schoolDate ? dateFromIso(schoolDate) : new Date())}</Text>
+            <Text style={[styles.title, { color: theme.text }]} accessibilityRole="header">
+              Today&apos;s revision
+            </Text>
+            {syllabus && (
+              <View style={styles.statusRow} accessibilityLiveRegion="polite">
+                <Ionicons
+                  name={hasActivation ? 'checkmark-circle-outline' : 'radio-button-off'}
+                  size={16}
+                  color={hasActivation ? theme.successText : theme.textSecondary}
+                  accessible={false}
+                />
+                <Text style={[styles.status, { color: hasActivation ? theme.successText : theme.textSecondary }]}>
+                  {statusLine(todaySections.size, todayQuestions)}
+                </Text>
+              </View>
             )}
-          </Button>
-          <View style={styles.navRow}>
-            <Link href="/(teacher)/participation" style={styles.navLink}>
-              <Ionicons name="people-outline" size={16} color={Accents.primary} />
-              <UIText className="text-primary-text font-bold" style={Type.bodyBold}>
-                Participation
-              </UIText>
-            </Link>
-            <Link href={'/(teacher)/students' as Href} style={styles.navLink}>
-              <Ionicons name="school-outline" size={16} color={Accents.primary} />
-              <UIText className="text-primary-text font-bold" style={Type.bodyBold}>
-                Students
-              </UIText>
-            </Link>
-            <Link href="/(teacher)/reports" style={styles.navLink}>
-              <Ionicons name="bar-chart-outline" size={16} color={Accents.primary} />
-              <UIText className="text-primary-text font-bold" style={Type.bodyBold}>
-                Performance
-              </UIText>
-            </Link>
           </View>
-        </Box>
-      </SafeAreaView>
 
-      <ConfirmSheet
-        visible={confirmOut}
-        title="Sign out?"
-        message="You'll need to sign in again to continue."
-        confirmLabel="Sign out"
-        loading={signingOut}
-        onConfirm={confirmSignOut}
-        onCancel={closeConfirm}
-      />
+          {error && <ErrorState message={error} onRetry={() => load()} />}
+          {loading && <HomeSkeleton />}
+
+          {empty && (
+            <View style={[styles.empty, { backgroundColor: theme.backgroundElement }]}>
+              <Ionicons name="library-outline" size={28} color={theme.textSecondary} />
+              <Text style={[styles.emptyTitle, { color: theme.text }]}>No topics yet</Text>
+              <Text style={[styles.emptyBody, { color: theme.textSecondary }]}>Add a chapter and its topics, then come back to activate today&apos;s revision.</Text>
+              <Button
+                variant="default"
+                className="min-h-11 rounded-xl"
+                onPress={() => router.push('/(teacher)/catalog' as Href)}
+                accessibilityRole="link"
+                accessibilityLabel="Manage topics"
+              >
+                <ButtonText style={Type.bodyBold}>Manage topics</ButtonText>
+              </Button>
+            </View>
+          )}
+
+          {!empty &&
+            groups.map((g) => (
+              <ChapterSection
+                key={g.id}
+                group={g}
+                selected={selected}
+                todaySections={todaySections}
+                defaultCollapsed={collapse}
+                onToggleTopic={toggle}
+                onToggleChapter={toggleChapter}
+              />
+            ))}
+
+          {sections.length > 0 && !empty && (
+            <View style={[styles.cohortSection, { backgroundColor: theme.backgroundElement }]}>
+              <Text style={[styles.cohortLabel, { color: theme.textSecondary }]}>Who sees this?</Text>
+              <View style={styles.cohortChips} accessibilityRole="radiogroup" accessibilityLabel="Target students">
+                <Pressable
+                  style={[styles.cohortChip, { borderColor: Accents.border }, selectedCohorts.length === 0 && { backgroundColor: Accents.primary, borderColor: Accents.primary }]}
+                  onPress={() => setSelectedCohorts([])}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: selectedCohorts.length === 0 }}
+                  accessibilityLabel="All students"
+                >
+                  <Text style={[styles.cohortChipText, { color: selectedCohorts.length === 0 ? '#fff' : theme.text }]}>All students</Text>
+                </Pressable>
+                {sections.map((s) => {
+                  const active = selectedCohorts.includes(s);
+                  return (
+                    <Pressable
+                      key={s}
+                      style={[styles.cohortChip, { borderColor: Accents.border }, active && { backgroundColor: Accents.primary, borderColor: Accents.primary }]}
+                      onPress={() => setSelectedCohorts((prev) => prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s])}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: active }}
+                      accessibilityLabel={`Target ${s}`}
+                    >
+                      <Text style={[styles.cohortChipText, { color: active ? '#fff' : theme.text }]}>{s}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
+          <ClassOverview />
+        </ScrollView>
+
+        <ActionBar topics={totals.topics} questions={totals.questions} hasActivation={hasActivation} changed={isChanged} busy={busy} onPress={save} />
+      </SafeAreaView>
 
       <AlertDialog isOpen={confirmOpen} onClose={() => setConfirmOpen(false)}>
         <AlertDialogBackdrop onPress={() => setConfirmOpen(false)} />
         <AlertDialogContent>
           <AlertDialogHeader>
             <Heading className="text-xl" style={Type.heading}>
-              Confirm activation
+              {hasActivation ? 'Update today’s revision?' : 'Confirm activation'}
             </Heading>
           </AlertDialogHeader>
           <AlertDialogBody>
             <UIText className="text-sm text-muted-foreground" style={Type.body}>
-              {isChanged
-                ? `This changes today's revision to ${selected.size} section(s) (${selectedQuestionCount} questions). Students' feeds will update immediately.`
-                : `Today's revision is already set to ${selected.size} section(s).`}
+              {selectedCohorts.length > 0
+                ? `This sets today's revision to ${plural(totals.topics, 'topic')} (${liveQuestions(totals.questions)}) for ${selectedCohorts.join(', ')}. Their feeds will update immediately.`
+                : `This sets today's revision to ${plural(totals.topics, 'topic')} (${liveQuestions(totals.questions)}). All students' feeds will update immediately.`}
             </UIText>
           </AlertDialogBody>
           <AlertDialogFooter>
-            <Button variant="outline" className="rounded-xl" onPress={() => setConfirmOpen(false)}>
+            <Button variant="outline" className="min-h-11 rounded-xl" onPress={() => setConfirmOpen(false)}>
               <ButtonText style={Type.bodyBold}>Cancel</ButtonText>
             </Button>
-            <Button variant="default" className="rounded-xl" onPress={doSave} disabled={busy}>
-              <ButtonText style={Type.bodyBold}>Yes, activate</ButtonText>
+            <Button variant="default" className="min-h-11 rounded-xl" onPress={doSave} disabled={busy} accessibilityState={{ busy, disabled: busy }}>
+              <ButtonText style={Type.bodyBold}>{hasActivation ? 'Yes, update' : 'Yes, activate'}</ButtonText>
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -292,42 +281,20 @@ export default function ActivateScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, padding: 16, gap: 12 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  signoutBtn: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderWidth: 1,
-    borderColor: Accents.border,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  signoutText: { fontSize: 13, fontWeight: '600' },
-  chapterHead: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 4,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    borderWidth: 1,
-    borderColor: Accents.border,
-    borderRadius: 14,
-    padding: 14,
-  },
-  rowOn: { borderColor: Accents.success, backgroundColor: Accents.successSoft },
-  dot: { width: 10, height: 10, borderRadius: 5 },
-  check: { fontSize: 18, fontWeight: '800' },
-  footer: { marginHorizontal: -16, paddingHorizontal: 16 },
-  navRow: { flexDirection: 'row', justifyContent: 'space-around' },
-  navLink: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8 },
+  safe: { flex: 1 },
+  flex: { flex: 1 },
+  content: { padding: 16, paddingBottom: 24, gap: 14 },
+  header: { gap: 2, marginBottom: 2 },
+  title: { ...Type.heading, fontSize: 28, lineHeight: 34 },
+  date: { ...Type.bodySemi, fontSize: 13 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  status: { ...Type.bodyBold, fontSize: 14 },
+  empty: { alignItems: 'center', gap: 8, borderRadius: 16, padding: 24 },
+  emptyTitle: { ...Type.heading, fontSize: 18 },
+  emptyBody: { ...Type.body, fontSize: 14, textAlign: 'center', marginBottom: 6 },
+  cohortSection: { borderRadius: 14, padding: 14, gap: 10 },
+  cohortLabel: { ...Type.bodyBold, fontSize: 13 },
+  cohortChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  cohortChip: { borderRadius: 99, borderWidth: 1.5, paddingHorizontal: 14, paddingVertical: 8, minHeight: 44, justifyContent: 'center' },
+  cohortChipText: { ...Type.bodyBold, fontSize: 13 },
 });

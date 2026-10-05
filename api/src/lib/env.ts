@@ -14,6 +14,16 @@ export const Env = z.object({
     .default(DEFAULT_TIMEZONE)
     .refine(isValidTimeZone, { message: "APP_TIMEZONE must be an IANA timezone, e.g. Asia/Kolkata" }),
   /**
+   * Number of reverse proxies in front of the API that append to X-Forwarded-For.
+   * The client IP is taken that many entries from the right (Render = 1). 0 = ignore the header.
+   */
+  TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(1),
+  /** "1"/"true" skips the boot-time schema check (escape hatch only). */
+  SKIP_SCHEMA_CHECK: z
+    .string()
+    .optional()
+    .transform((v) => v === "1" || v?.toLowerCase() === "true"),
+  /**
    * Shared secret a teacher must present to self-register. Unset (or empty)
    * disables teacher self-signup entirely; students are unaffected.
    */

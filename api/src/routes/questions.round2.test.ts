@@ -461,12 +461,18 @@ test("CORS preflight allows PATCH and PUT", async () => {
 
 // ── Servable filter (static guard; behaviour of the SQL itself needs a real DB) ──
 
-test("every student-facing questions.enabled filter is paired with status = 'published'", () => {
-  for (const f of ["./feed.ts", "./reports.ts", "./submissions.ts", "../lib/reviews.ts"]) {
+test("the servable filter (enabled AND published) lives in ONE place, and routes do not hand-roll it", () => {
+  // The filter is defined once in lib/reviews.ts (servableWhere) and consumed through lib/progress.ts.
+  for (const f of ["../lib/reviews.ts", "../lib/progress.ts"]) {
     const text = readFileSync(new URL(f, import.meta.url), "utf8");
     const enabled = (text.match(/questions\.enabled, true/g) ?? []).length;
     const published = (text.match(/questions\.status, "published"/g) ?? []).length;
-    assert.ok(enabled > 0 && published >= enabled, `${f}: ${enabled} enabled filters vs ${published} published filters`);
+    if (f.endsWith("reviews.ts")) assert.ok(enabled > 0 && published >= enabled, `${f}: ${enabled} enabled filters vs ${published} published filters`);
+  }
+  // Student-facing routes must go through the shared helper, not re-implement the condition.
+  for (const f of ["./feed.ts", "./reports.ts", "./submissions.ts"]) {
+    const text = readFileSync(new URL(f, import.meta.url), "utf8");
+    assert.equal((text.match(/questions\.enabled, true/g) ?? []).length, 0, `${f} hand-rolls the enabled filter; use servableWhere`);
   }
 });
 

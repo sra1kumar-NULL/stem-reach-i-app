@@ -2,10 +2,9 @@ import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable } from 'react-native';
 
-import { AuthShell } from '@/components/auth-shell';
+import { AuthField, AuthShell } from '@/components/auth-shell';
 import { useToast } from '@/components/toast';
 import { Button, ButtonText } from '@/components/ui/button';
-import { Input, InputField } from '@/components/ui/input';
 import { Text } from '@/components/ui/text';
 import { Fonts, Nord } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -85,36 +84,29 @@ export default function ResetPasswordScreen() {
 
   return (
     <AuthShell title="Choose a new password" subtitle="Use at least 8 characters." icon="key">
-      <Input className="border border-border rounded-xl bg-background">
-        <InputField
-          value={password}
-          onChangeText={setPassword}
-          placeholder="new password"
-          accessibilityLabel="New password"
-          autoComplete="new-password"
-          textContentType="newPassword"
-          placeholderTextColor={theme.textSecondary}
-          secureTextEntry
-          className="px-4 py-3 text-base"
-          style={{ color: theme.text, fontFamily: Fonts.sans }}
-        />
-      </Input>
-      <Input className="border border-border rounded-xl bg-background">
-        <InputField
-          value={confirm}
-          onChangeText={setConfirm}
-          placeholder="confirm new password"
-          accessibilityLabel="Confirm new password"
-          autoComplete="new-password"
-          textContentType="newPassword"
-          placeholderTextColor={theme.textSecondary}
-          secureTextEntry
-          returnKeyType="go"
-          onSubmitEditing={() => void submit()}
-          className="px-4 py-3 text-base"
-          style={{ color: theme.text, fontFamily: Fonts.sans }}
-        />
-      </Input>
+      <AuthField
+        label="New password"
+        hint="At least 8 characters"
+        password
+        value={password}
+        onChangeText={setPassword}
+        placeholder="new password"
+        autoComplete="new-password"
+        textContentType="newPassword"
+        returnKeyType="next"
+      />
+      <AuthField
+        label="Type it again"
+        password
+        value={confirm}
+        onChangeText={setConfirm}
+        placeholder="confirm new password"
+        accessibilityLabel="Confirm new password"
+        autoComplete="new-password"
+        textContentType="newPassword"
+        returnKeyType="go"
+        onSubmitEditing={() => void submit()}
+      />
 
       {error && (
         <Text accessibilityRole="alert" className="text-center text-danger-text text-sm" style={{ fontFamily: Fonts.sans }}>

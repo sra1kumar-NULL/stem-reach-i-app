@@ -26,26 +26,30 @@ const buttonStyle = tva({
     variant: {
       default:
         'bg-primary data-[hover=true]:bg-primary/90 data-[active=true]:bg-primary/90',
+      // Solid red fill (#A33F4A): white label = 6.24:1 in both themes.
       destructive:
-        'bg-destructive data-[hover=true]:bg-destructive/90 data-[active=true]:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60',
+        'bg-destructive data-[hover=true]:bg-destructive/90 data-[active=true]:bg-destructive/90 focus-visible:ring-destructive/40',
+      // Nord3 outline, 1.5 px, in both themes.
       outline:
-        'border border-border bg-background shadow-xs data-[hover=true]:bg-accent data-[active=true]:bg-accent dark:bg-input/[0.045] dark:border-border/90 dark:data-[hover=true]:bg-input/[0.075] dark:data-[active=true]:bg-input/[0.075]',
+        'border-[1.5px] border-border bg-background shadow-xs data-[hover=true]:bg-accent data-[active=true]:bg-accent',
       secondary:
         'bg-secondary text-secondary-foreground data-[hover=true]:bg-secondary/80 data-[active=true]:bg-secondary/80',
+      // Borderless text button for secondary actions; same 44 pt target as the rest.
       ghost: 'data-[hover=true]:bg-accent data-[active=true]:bg-accent dark:data-[hover=true]:bg-accent/50 dark:data-[active=true]:bg-accent/50',
-      link: 'text-primary underline-offset-4 data-[hover=true]:underline data-[active=true]:underline',
+      link: 'underline-offset-4 data-[hover=true]:underline data-[active=true]:underline',
     },
     // Every size meets the 44pt minimum touch target (min-h-11 = 44px).
     size: {
       default: 'min-h-11 px-4 py-2',
-      sm: 'min-h-11 rounded-md px-3 text-xs',
+      sm: 'min-h-11 rounded-md px-3',
       lg: 'min-h-11 rounded-md px-8',
       icon: 'min-h-11 min-w-11',
     },
   },
 });
 const buttonTextStyle = tva({
-  base: 'web:select-none font-sans',
+  // Label is 14 / 700 in every size and variant.
+  base: 'web:select-none font-sans text-sm font-bold',
   parentVariants: {
     variant: {
       default: 'text-primary-foreground',
@@ -53,11 +57,12 @@ const buttonTextStyle = tva({
       outline: 'text-foreground data-[hover=true]:text-accent-foreground data-[active=true]:text-accent-foreground',
       secondary: 'text-secondary-foreground',
       ghost: 'text-foreground ',
-      link: 'text-primary data-[hover=true]:underline data-[active=true]:underline',
+      link: 'text-primary-text data-[hover=true]:underline data-[active=true]:underline',
     },
+    // Same 14 px label in every size (kept as a variant so `size` stays accepted).
     size: {
       default: 'text-sm',
-      sm: 'text-xs',
+      sm: 'text-sm',
       lg: 'text-sm',
       icon: 'text-sm',
     },
@@ -87,7 +92,7 @@ const buttonIconStyle = tva({
       secondary: 'text-secondary-foreground',
       ghost:
         'text-foreground data-[hover=true]:text-accent-foreground data-[active=true]:text-accent-foreground',
-      link: 'text-primary',
+      link: 'text-primary-text',
     },
     size: {
       default: 'h-4 w-4',
