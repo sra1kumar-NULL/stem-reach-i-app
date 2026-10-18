@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 import { Link, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
@@ -44,19 +45,30 @@ async function saveText(filename: string, mime: string, text: string): Promise<'
   return 'shared';
 }
 
-function pickTextFile(): Promise<string | null> {
-  return new Promise((resolve, reject) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json,.csv,.tsv,.txt,text/csv,text/tab-separated-values,application/json,text/plain';
-    input.onchange = () => {
-      const file = input.files?.[0];
-      if (!file) return resolve(null);
-      if (file.size > MAX_FILE_BYTES) return reject(new Error('too_large'));
-      file.text().then(resolve, reject);
-    };
-    input.click();
+async function pickTextFile(): Promise<string | null> {
+  if (Platform.OS === 'web') {
+    return new Promise((resolve, reject) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.json,.csv,.tsv,.txt,text/csv,text/tab-separated-values,application/json,text/plain';
+      input.onchange = () => {
+        const file = input.files?.[0];
+        if (!file) return resolve(null);
+        if (file.size > MAX_FILE_BYTES) return reject(new Error('too_large'));
+        file.text().then(resolve, reject);
+      };
+      input.click();
+    });
+  }
+  const result = await DocumentPicker.getDocumentAsync({
+    type: ['text/csv', 'text/tab-separated-values', 'application/json', 'text/plain', '*/*'],
+    copyToCacheDirectory: true,
   });
+  if (result.canceled) return null;
+  const asset = result.assets[0];
+  if (asset.size && asset.size > MAX_FILE_BYTES) throw new Error('too_large');
+  const response = await fetch(asset.uri);
+  return response.text();
 }
 
 type Phase = 'edit' | 'checking' | 'checked' | 'importing' | 'done';
@@ -277,12 +289,10 @@ export default function ImportScreen() {
             </UIText>
 
             <View style={styles.row}>
-              {Platform.OS === 'web' ? (
-                <Button variant="outline" className="min-h-11 rounded-2xl" onPress={() => void chooseFile()} accessibilityLabel="Choose a file to import">
-                  <Ionicons name="document-outline" size={16} color={theme.text} />
-                  <ButtonText style={Type.bodyBold}>Choose file</ButtonText>
-                </Button>
-              ) : null}
+              <Button variant="outline" className="min-h-11 rounded-2xl" onPress={() => void chooseFile()} accessibilityLabel="Choose a file to import">
+                <Ionicons name="document-outline" size={16} color={theme.text} />
+                <ButtonText style={Type.bodyBold}>Choose file</ButtonText>
+              </Button>
               <Button variant="outline" className="min-h-11 rounded-2xl" onPress={() => void downloadTemplate()} accessibilityLabel="Download CSV template">
                 <Ionicons name="download-outline" size={16} color={theme.text} />
                 <ButtonText style={Type.bodyBold}>{Platform.OS === 'web' ? 'Download CSV template' : 'Share CSV template'}</ButtonText>
