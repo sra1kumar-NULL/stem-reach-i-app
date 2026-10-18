@@ -1,0 +1,83 @@
+name: Release APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v1.0.1)'
+        required: true
+
+concurrency:
+  group: release-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            mobile/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install workspaces
+        run: npm ci
+
+      - name: Install mobile
+        run: npm ci --prefix mobile
+
+      # The anon key is public (it's already in eas.json and the repo).
+      # EXPO_PUBLIC_* values are baked into the JS bundle at build time — not secrets.
+      - name: Build release APK
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
+          EXPO_PUBLIC_API_URL: https://stemreach-api.onrender.com
+          EXPO_PUBLIC_SUPABASE_URL: https://cihobqescuhuxtiogivb.supabase.co
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+        run: scripts/build-apk.sh
+
+      - name: Get version from app.json
+        id: version
+        run: echo "version=$(node -p "require('./mobile/app.json').expo.version")" >> "$GITHUB_OUTPUT"
+
+      - name: Rename APK with tag
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          mv dist/daily-revision-${{ steps.version.outputs.version }}.apk \
+             dist/daily-revision-${TAG}.apk
+          echo "APK_PATH=dist/daily-revision-${TAG}.apk" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: DailyRevise ${{ github.event.inputs.tag || github.ref_name }}
+          body: |
+            ## Install
+
+            Download **daily-revision-${{ github.event.inputs.tag || github.ref_name }}.apk** below and sideload it on Android.
+
+            Enable **Install from unknown sources** in your phone settings if prompted.
+
+            ## What's in this build
+
+            - API: https://stemreach-api.onrender.com
+            - Supabase: cihobqescuhuxtiogivb
+          files: ${{ env.APK_PATH }}
+          draft: false
+          prerelease: false
