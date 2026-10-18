@@ -113,7 +113,6 @@ app and APK.
 ## Docs
 
 - [Architecture](docs/ARCHITECTURE.md) — system shape, flows, stack
-- [PRD](docs/01-PRD.md) · [HLD](docs/03-HLD.md) · [LLD](docs/04-LLD.md) · [Roadmap](docs/05-ROADMAP.md) · [Feature plan](docs/06-FEATURE-PLAN.md)
-- [Deployment guide](docs/DEPLOY.md) · [ADRs](docs/ADR/)
-- Reviews: [Audit 2026-10](docs/reviews/AUDIT-2026-10.md) · [Emulator QA](docs/reviews/EMULATOR-QA.md)
+- [PRD](docs/01-PRD.md) · [HLD](docs/03-HLD.md) · [LLD](docs/04-LLD.md) 
+- [Deployment guide](docs/DEPLOY.md)
 
