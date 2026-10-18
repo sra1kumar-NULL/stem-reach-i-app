@@ -18,7 +18,8 @@
     "dev:mobile": "npm --prefix mobile run dev",
     "dev:android": "npm --prefix mobile run android",
     "lint": "npm --prefix mobile run lint",
-    "build:apk": "bash scripts/build-apk.sh"
+    "build:apk": "bash scripts/build-apk.sh",
+    "release": "node -e \"const v=require('./mobile/app.json').expo.version;require('child_process').execSync('git tag v'+v+' && git push origin v'+v,{stdio:'inherit'})\""
   },
   "engines": {
     "node": ">=22.6"
