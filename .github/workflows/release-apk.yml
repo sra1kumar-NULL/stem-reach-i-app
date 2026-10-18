@@ -1,0 +1,88 @@
+name: Release APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v1.0.1)'
+        required: true
+
+concurrency:
+  group: release-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            mobile/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install workspaces
+        run: npm ci
+
+      - name: Install mobile
+        run: npm ci --prefix mobile
+
+      # The anon key is public (it's already in eas.json and the repo).
+      # EXPO_PUBLIC_* values are baked into the JS bundle at build time — not secrets.
+      - name: Build release APK
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
+          EXPO_PUBLIC_API_URL: https://stemreach-api.onrender.com
+          EXPO_PUBLIC_SUPABASE_URL: https://cihobqescuhuxtiogivb.supabase.co
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+        run: scripts/build-apk.sh
+
+      - name: Get version from app.json
+        id: version
+        run: echo "version=$(node -p "require('./mobile/app.json').expo.version")" >> "$GITHUB_OUTPUT"
+
+      - name: Package APK into zip
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          APK="daily-revision-${{ steps.version.outputs.version }}.apk"
+          ZIP="daily-revision-${TAG}.zip"
+          # Rename APK to include tag, then zip it
+          mv "dist/${APK}" "dist/daily-revision-${TAG}.apk"
+          cd dist && zip "${ZIP}" "daily-revision-${TAG}.apk"
+          echo "ZIP_PATH=dist/${ZIP}" >> "$GITHUB_ENV"
+          echo "TAG=${TAG}" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: DailyRevise ${{ env.TAG }}
+          body: |
+            ## Install on Android
+
+            1. Download **daily-revision-${{ env.TAG }}.zip** below
+            2. Unzip it — you'll get `daily-revision-${{ env.TAG }}.apk`
+            3. Open the APK on your phone
+            4. If prompted, enable **Install from unknown sources** in Settings
+
+            ## Build info
+
+            - API: https://stemreach-api.onrender.com
+            - Supabase project: cihobqescuhuxtiogivb
+          files: ${{ env.ZIP_PATH }}
+          draft: false
+          prerelease: false
