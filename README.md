@@ -1,6 +1,6 @@
 # Daily Revision
 
-A bite-sized daily revision app for students and teachers. Teachers pick the topics of the day;
+A daily revision app for students and teachers. Teachers pick the topics of the day;
 students swipe through a reels-style vertical feed of MCQs and flashcards, build their own offline
 self-study decks, and teachers track participation and performance — all in a bright, kid-friendly
 UI. Fully white-label: no school-specific branding, so any school can adopt it.
@@ -110,32 +110,10 @@ The APK talks to the hosted API set by `EXPO_PUBLIC_API_URL` (see `mobile/eas.js
 `preview` / `production` profiles). See [docs/DEPLOY.md](docs/DEPLOY.md) for hosting the API, web
 app and APK.
 
-## Working with AI agents
-
-The repo ships agents, skills and workflows for both tools, kept in sync:
-
-| | OpenCode | Claude Code |
-|---|---|---|
-| Agents (Senior/Staff/Principal Engineer, Architect, Code/Security Reviewer, Test Engineer, Debugger) | `.opencode/agents/` | `.claude/agents/` |
-| Skills (architecture, code-review, frontend, testing, security, performance) | `.opencode/skills/` | `.claude/skills/` (`code-review` is `repo-code-review`) |
-| Workflows `/plan` `/review` `/fix-review` `/test` `/ship` | `.opencode/commands/` | `.claude/commands/` |
-
-Rules for all agents and contributors live in [AGENTS.md](AGENTS.md) (entry point for Claude Code:
-[CLAUDE.md](CLAUDE.md)). Highlights: the API is the only writer to business tables, every boundary is
-validated with Zod, authorization comes from the verified token only, and a `core/` contract change
-is a breaking change for installed apps.
-
 ## Docs
 
 - [Architecture](docs/ARCHITECTURE.md) — system shape, flows, stack
 - [PRD](docs/01-PRD.md) · [HLD](docs/03-HLD.md) · [LLD](docs/04-LLD.md) · [Roadmap](docs/05-ROADMAP.md) · [Feature plan](docs/06-FEATURE-PLAN.md)
 - [Deployment guide](docs/DEPLOY.md) · [ADRs](docs/ADR/)
-- Plans: [Round 2 spec](docs/plans/ROUND2-API-SPEC.md) · [Teacher authoring](docs/plans/TEACHER-AUTHORING-PLAN.md) · [UI](docs/plans/UI-PLAN.md) · [Feature improvements](docs/plans/FEATURE-IMPROVEMENT-PLAN.md) · [Bug hunt](docs/plans/BUG-HUNT-PLAN.md)
 - Reviews: [Audit 2026-10](docs/reviews/AUDIT-2026-10.md) · [Emulator QA](docs/reviews/EMULATOR-QA.md)
 
-## Status
-
-M1–M4 done: API (feed, submissions, reports, activations), mobile app (auth, role routing, student
-feed, teacher dashboard) and offline self-study. **Next:** multi-tenant organizations — a teacher
-picks subject → module → topic and activates revision for their own org only. See the
-[roadmap](docs/05-ROADMAP.md) and [feature plan](docs/06-FEATURE-PLAN.md).
